@@ -125,8 +125,8 @@ function CombatLogParser.ParseOtherPlayerCrit(message)
     
     -- Look for other players' critical hit patterns
     if string.find(message, "crit") then
-        -- Pattern: "PlayerName's SpellName crits Target for X damage"
-        local _, _, playerName, spellName, critAmount = string.find(message, "([^']+)'s ([^%s]+) crits [^%s]+ for (%d+)")
+        -- Pattern 1: "PlayerName's SpellName crits Target for X damage"
+        local _, _, playerName, spellName, critAmount = string.find(message, "([^']+)'s ([^%s]+[^%s]*) crits .* for (%d+)")
         if playerName and spellName and critAmount then
             return {
                 playerName = playerName,
@@ -136,26 +136,48 @@ function CombatLogParser.ParseOtherPlayerCrit(message)
             }
         end
         
-        -- Pattern: "PlayerName crits Target for X damage" (auto-attack)
-        local _, _, altPlayerName, altAmount = string.find(message, "([^%s]+) crits [^%s]+ for (%d+)")
-        if altPlayerName and altAmount then
+        -- Pattern 2: "PlayerName's Multi Word Spell crits Target for X damage"
+        local _, _, playerName2, multiSpell, critAmount2 = string.find(message, "([^']+)'s (.+) crits .* for (%d+)")
+        if playerName2 and multiSpell and critAmount2 then
+            -- Clean up the spell name (remove any trailing text)
+            local cleanSpell = multiSpell
+            local spacePos = string.find(cleanSpell, " crits")
+            if spacePos then
+                cleanSpell = string.sub(cleanSpell, 1, spacePos - 1)
+            end
+            
             return {
-                playerName = altPlayerName,
-                amount = tonumber(altAmount),
-                spell = "Auto Attack",
+                playerName = playerName2,
+                amount = tonumber(critAmount2),
+                spell = cleanSpell,
                 isCritical = true
             }
         end
         
-        -- Pattern: "PlayerName critically hits Target for X damage"
-        local _, _, critPlayerName, critAmount2 = string.find(message, "([^%s]+) critically hits [^%s]+ for (%d+)")
-        if critPlayerName and critAmount2 then
-            return {
-                playerName = critPlayerName,
-                amount = tonumber(critAmount2),
-                spell = "Attack",
-                isCritical = true
-            }
+        -- Pattern 3: "PlayerName crits Target for X damage" (auto-attack, only if no possessive)
+        if not string.find(message, "'s") then
+            local _, _, altPlayerName, altAmount = string.find(message, "([^%s]+) crits .* for (%d+)")
+            if altPlayerName and altAmount then
+                return {
+                    playerName = altPlayerName,
+                    amount = tonumber(altAmount),
+                    spell = "Auto Attack",
+                    isCritical = true
+                }
+            end
+        end
+        
+        -- Pattern 4: "PlayerName critically hits Target for X damage"
+        if not string.find(message, "'s") then
+            local _, _, critPlayerName, critAmount3 = string.find(message, "([^%s]+) critically hits .* for (%d+)")
+            if critPlayerName and critAmount3 then
+                return {
+                    playerName = critPlayerName,
+                    amount = tonumber(critAmount3),
+                    spell = "Attack",
+                    isCritical = true
+                }
+            end
         end
     end
     

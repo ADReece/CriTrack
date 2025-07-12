@@ -55,36 +55,51 @@ end
 function HealerTracker.ParseCriticalHeal(message)
     if not message then return nil end
     
-    -- Look for critical heal patterns
-    if string.find(message, "crit") and string.find(message, "heal") then
-        -- Extract heal amount - look for "for X" pattern
-        local _, _, healAmount = string.find(message, "for (%d+)")
-        if healAmount then
-            healAmount = tonumber(healAmount)
-            
-            -- Try to extract spell name and target
-            local spellName = "Heal"
-            local target = "target"
-            local caster = nil
-            
-            -- Pattern: "Your [SpellName] critically heals [Target] for X"
-            local _, _, foundSpell, foundTarget = string.find(message, "Your ([^%s]+) critically heals ([^%s]+) for")
-            if foundSpell and foundTarget then
-                spellName = foundSpell
-                target = foundTarget
-            else
-                -- Pattern: "Your [SpellName] heals [Target] for X (critical)"  
-                local _, _, altSpell, altTarget = string.find(message, "Your ([^%s]+) heals ([^%s]+) for %d+ %(critical%)")
-                if altSpell and altTarget then
-                    spellName = altSpell
-                    target = altTarget
-                end
-            end
-            
+    -- Look for critical heal patterns in WoW 1.12 format
+    -- Pattern 1: "Your SpellName critically heals Target for X."
+    local _, _, spellName, target, healAmount = string.find(message, "Your ([^%s]+) critically heals ([^%s]+) for (%d+)")
+    if spellName and target and healAmount then
+        return {
+            amount = tonumber(healAmount),
+            spell = spellName,
+            target = target,
+            caster = UnitName("player") or "You",
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 2: "Your SpellName heals Target for X. (Critical)"
+    local _, _, spellName2, target2, healAmount2 = string.find(message, "Your ([^%s]+) heals ([^%s]+) for (%d+)%..*[Cc]ritical")
+    if spellName2 and target2 and healAmount2 then
+        return {
+            amount = tonumber(healAmount2),
+            spell = spellName2,
+            target = target2,
+            caster = UnitName("player") or "You",
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 3: "You critically heal Target for X."
+    local _, _, target3, healAmount3 = string.find(message, "You critically heal ([^%s]+) for (%d+)")
+    if target3 and healAmount3 then
+        return {
+            amount = tonumber(healAmount3),
+            spell = "Heal",
+            target = target3,
+            caster = UnitName("player") or "You",
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 4: Look for any heal with "critical" in the message
+    if string.find(message, "[Cc]ritical") and string.find(message, "heal") then
+        local _, _, anyAmount = string.find(message, "for (%d+)")
+        if anyAmount then
             return {
-                amount = healAmount,
-                spell = spellName,
-                target = target,
+                amount = tonumber(anyAmount),
+                spell = "Heal",
+                target = "target",
                 caster = UnitName("player") or "You",
                 isCritical = true
             }
@@ -98,28 +113,52 @@ end
 function HealerTracker.ParseGroupCriticalHeal(message)
     if not message or not healerData.groupMode then return nil end
     
-    -- Look for other players' critical heals
-    if string.find(message, "crit") and string.find(message, "heal") then
-        -- Pattern: "[Caster]'s [SpellName] critically heals [Target] for X"
-        local _, _, caster, spellName, target, healAmount = string.find(message, "([^']+)'s ([^%s]+) critically heals ([^%s]+) for (%d+)")
-        if caster and spellName and target and healAmount then
+    -- Look for other players' critical heals in WoW 1.12 format
+    -- Pattern 1: "PlayerName's SpellName critically heals Target for X."
+    local _, _, caster, spellName, target, healAmount = string.find(message, "([^']+)'s ([^%s]+) critically heals ([^%s]+) for (%d+)")
+    if caster and spellName and target and healAmount then
+        return {
+            amount = tonumber(healAmount),
+            spell = spellName,
+            target = target,
+            caster = caster,
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 2: "PlayerName's SpellName heals Target for X. (Critical)"
+    local _, _, caster2, spellName2, target2, healAmount2 = string.find(message, "([^']+)'s ([^%s]+) heals ([^%s]+) for (%d+)%..*[Cc]ritical")
+    if caster2 and spellName2 and target2 and healAmount2 then
+        return {
+            amount = tonumber(healAmount2),
+            spell = spellName2,
+            target = target2,
+            caster = caster2,
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 3: "PlayerName critically heals Target for X."
+    local _, _, caster3, target3, healAmount3 = string.find(message, "([^%s]+) critically heals ([^%s]+) for (%d+)")
+    if caster3 and target3 and healAmount3 then
+        return {
+            amount = tonumber(healAmount3),
+            spell = "Heal",
+            target = target3,
+            caster = caster3,
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 4: Look for any heal with "critical" and extract caster
+    if string.find(message, "[Cc]ritical") and string.find(message, "heal") then
+        local _, _, anyCaster, anyAmount = string.find(message, "([^%s]+).*for (%d+)")
+        if anyCaster and anyAmount then
             return {
-                amount = tonumber(healAmount),
-                spell = spellName,
-                target = target,
-                caster = caster,
-                isCritical = true
-            }
-        end
-        
-        -- Alternative pattern: "[Caster] critically heals [Target] for X"
-        local _, _, altCaster, altTarget, altAmount = string.find(message, "([^%s]+) critically heals ([^%s]+) for (%d+)")
-        if altCaster and altTarget and altAmount then
-            return {
-                amount = tonumber(altAmount),
+                amount = tonumber(anyAmount),
                 spell = "Heal",
-                target = altTarget,
-                caster = altCaster,
+                target = "target",
+                caster = anyCaster,
                 isCritical = true
             }
         end

@@ -266,6 +266,34 @@ local function OnEvent()
                 end
             end
         end
+    elseif event == "CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF" or event == "CHAT_MSG_SPELL_PARTY_BUFF" then
+        -- Parse group member healing for group mode
+        local message = arg1
+        
+        if debugEnabled then
+            DebugMessage("Group heal message (" .. event .. "): " .. tostring(message), debugEnabled)
+        end
+        
+        -- Check for group critical heals
+        if HealerTracker and HealerTracker.IsEnabled() and HealerTracker.IsGroupModeEnabled() then
+            local healData = HealerTracker.ParseGroupCriticalHeal(message)
+            if healData then
+                DebugMessage("Group critical heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Caster=" .. tostring(healData.caster), debugEnabled)
+                
+                -- Update group heal record
+                local groupHealResult = HealerTracker.UpdateGroupRecord(healData)
+                
+                -- Save healer data
+                if groupHealResult.updated then
+                    CriTrackDB.healerData = HealerTracker.GetData()
+                    
+                    -- Announce group heal record
+                    if groupHealResult.isNewLeader then
+                        SendChatMessage("New group heal record: " .. healData.amount .. " (" .. healData.spell .. ") by " .. healData.caster .. " on " .. healData.target .. "!", announcementChannel)
+                    end
+                end
+            end
+        end
     elseif event == "CHAT_MSG_COMBAT_PARTY_HITS" or event == "CHAT_MSG_SPELL_PARTY_DAMAGE" or 
            event == "CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS" or event == "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" then
         -- Parse other players' critical hits for competition mode
@@ -285,6 +313,14 @@ local function OnEvent()
             if otherCritData then
                 DebugMessage("Other player crit parsed! Player=" .. tostring(otherCritData.playerName) .. ", Amount=" .. tostring(otherCritData.amount) .. ", Spell=" .. tostring(otherCritData.spell), debugEnabled)
                 
+                -- Additional debug info
+                if debugEnabled then
+                    DebugMessage("Raw message was: " .. tostring(message), debugEnabled)
+                    DebugMessage("Extracted player: '" .. tostring(otherCritData.playerName) .. "'", debugEnabled)
+                    DebugMessage("Extracted spell: '" .. tostring(otherCritData.spell) .. "'", debugEnabled)
+                    DebugMessage("Extracted amount: " .. tostring(otherCritData.amount), debugEnabled)
+                end
+                
                 -- Update competition leaderboard
                 local competitionResult = CompetitionManager.UpdateLeaderboard(otherCritData.playerName, otherCritData.amount, otherCritData.spell)
                 
@@ -297,6 +333,10 @@ local function OnEvent()
                         SendChatMessage("New group crit leader: " .. otherCritData.amount .. " (" .. otherCritData.spell .. ") by " .. otherCritData.playerName .. "!", announcementChannel)
                     end
                 end
+            else
+                if debugEnabled then
+                    DebugMessage("No crit data parsed from message: " .. tostring(message), debugEnabled)
+                end
             end
         end
     end
@@ -308,6 +348,8 @@ CriTrack:RegisterEvent("PLAYER_LOGIN")
 CriTrack:RegisterEvent("CHAT_MSG_COMBAT_SELF_HITS")
 CriTrack:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 CriTrack:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
+CriTrack:RegisterEvent("CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF")
+CriTrack:RegisterEvent("CHAT_MSG_SPELL_PARTY_BUFF")
 CriTrack:RegisterEvent("CHAT_MSG_COMBAT_FRIENDLY_BUFF")
 CriTrack:RegisterEvent("CHAT_MSG_COMBAT_PARTY_HITS")
 CriTrack:RegisterEvent("CHAT_MSG_SPELL_PARTY_DAMAGE")
@@ -415,7 +457,7 @@ SlashCmdList["CRITDEBUG"] = function(msg)
             DEFAULT_CHAT_FRAME:AddMessage("Saved Crit: " .. tostring(CriTrackDB.highestCrit or 0))
             DEFAULT_CHAT_FRAME:AddMessage("Saved Spell: " .. tostring(CriTrackDB.highestCritSpell or "Unknown"))
         end
-        DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, CHAT_MSG_COMBAT_SELF_HITS, CHAT_MSG_SPELL_SELF_DAMAGE, CHAT_MSG_SPELL_SELF_BUFF, CHAT_MSG_COMBAT_FRIENDLY_BUFF, CHAT_MSG_COMBAT_PARTY_HITS, CHAT_MSG_SPELL_PARTY_DAMAGE, CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS, CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE")
+        DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, CHAT_MSG_COMBAT_SELF_HITS, CHAT_MSG_SPELL_SELF_DAMAGE, CHAT_MSG_SPELL_SELF_BUFF, CHAT_MSG_COMBAT_FRIENDLY_BUFF, CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF, CHAT_MSG_SPELL_PARTY_BUFF, CHAT_MSG_COMBAT_PARTY_HITS, CHAT_MSG_SPELL_PARTY_DAMAGE, CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS, CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE")
         DEFAULT_CHAT_FRAME:AddMessage("==========================")
     elseif msg == "on" then
         debugEnabled = true
@@ -566,6 +608,39 @@ SlashCmdList["CRITTESTOTHER"] = function(msg)
     end
 end
 
+-- Test command for parsing combat messages
+SLASH_CRITTESTPARSE1 = "/crittestparse"
+SlashCmdList["CRITTESTPARSE"] = function(msg)
+    if not CombatLogParser then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: CombatLogParser module not loaded!")
+        return
+    end
+    
+    if not msg or msg == "" then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Usage - /crittestparse <combat message>")
+        DEFAULT_CHAT_FRAME:AddMessage("Examples:")
+        DEFAULT_CHAT_FRAME:AddMessage("  /crittestparse Fred's Arcane Explosion crits Kobold for 245 damage")
+        DEFAULT_CHAT_FRAME:AddMessage("  /crittestparse Gandalf's Fireball crits Orc for 456 damage")
+        DEFAULT_CHAT_FRAME:AddMessage("  /crittestparse Alice crits Rat for 123 damage")
+        return
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Testing message parsing...")
+    DEFAULT_CHAT_FRAME:AddMessage("Input: " .. msg)
+    
+    local otherCritData = CombatLogParser.ParseOtherPlayerCrit(msg)
+    
+    if otherCritData then
+        DEFAULT_CHAT_FRAME:AddMessage("✓ Successfully parsed:")
+        DEFAULT_CHAT_FRAME:AddMessage("  Player: '" .. tostring(otherCritData.playerName) .. "'")
+        DEFAULT_CHAT_FRAME:AddMessage("  Spell: '" .. tostring(otherCritData.spell) .. "'")
+        DEFAULT_CHAT_FRAME:AddMessage("  Amount: " .. tostring(otherCritData.amount))
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("✗ Failed to parse - no crit data found")
+        DEFAULT_CHAT_FRAME:AddMessage("  Check if message contains 'crit' and expected format")
+    end
+end
+
 -- Help command to show all available commands
 SLASH_CRITHELP1 = "/crithelp"
 SlashCmdList["CRITHELP"] = function(msg)
@@ -603,6 +678,11 @@ SlashCmdList["CRITHELP"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crithealtest <amount>|r - Set test heal for debugging")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestother <player> <amount> [spell]|r - Test other player crit detection")
     DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestother Gandalf 450 Fireball|r")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestparse <message>|r - Test combat message parsing")
+    DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestparse Fred's Arcane Explosion crits Kobold for 245 damage|r")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestall|r - Run comprehensive parsing tests")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestparse <message>|r - Test parsing of combat messages")
+    DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestparse 'Gandalf's Fireball crits Orc for 456 damage'|r")
     DEFAULT_CHAT_FRAME:AddMessage(" ")
     DEFAULT_CHAT_FRAME:AddMessage("|cffccccccFor detailed help on any command, try the command without arguments.|r")
     DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00==================|r")
@@ -844,6 +924,159 @@ SlashCmdList["CRITHEAL"] = function(msg)
         DEFAULT_CHAT_FRAME:AddMessage("  /critheal resetpersonal - Reset personal heal record")
         DEFAULT_CHAT_FRAME:AddMessage("  /critheal resetgroup - Reset group heal record")
     end
+end
+
+-- Comprehensive parsing test command
+SLASH_CRITTESTALL1 = "/crittestall"
+SlashCmdList["CRITTESTALL"] = function(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("=== CriTrack Comprehensive Parsing Test ===")
+    
+    -- Test 1: Self critical hit parsing
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Test 1: Self Critical Hit Parsing")
+    local testMessages = {
+        "Your Fireball crits Orc for 456 damage.",
+        "Your Frostbolt crits Kobold for 234 damage.",
+        "You crit Rat for 123 damage."
+    }
+    
+    for i = 1, table.getn(testMessages) do
+        local testMsg = testMessages[i]
+        DEFAULT_CHAT_FRAME:AddMessage("  Testing: " .. testMsg)
+        if CombatLogParser then
+            local result = CombatLogParser.ParseCriticalHit(testMsg)
+            if result then
+                DEFAULT_CHAT_FRAME:AddMessage("    ✓ Parsed: " .. result.amount .. " (" .. result.spell .. ")")
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("    ✗ Failed to parse")
+            end
+        end
+    end
+    
+    -- Test 2: Other player critical hit parsing
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Test 2: Other Player Critical Hit Parsing")
+    local otherTestMessages = {
+        "Fred's Arcane Explosion crits Kobold for 245 damage.",
+        "Gandalf's Fireball crits Orc for 456 damage.",
+        "Alice crits Rat for 123 damage."
+    }
+    
+    for i = 1, table.getn(otherTestMessages) do
+        local testMsg = otherTestMessages[i]
+        DEFAULT_CHAT_FRAME:AddMessage("  Testing: " .. testMsg)
+        if CombatLogParser then
+            local result = CombatLogParser.ParseOtherPlayerCrit(testMsg)
+            if result then
+                DEFAULT_CHAT_FRAME:AddMessage("    ✓ Parsed: " .. result.playerName .. " - " .. result.amount .. " (" .. result.spell .. ")")
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("    ✗ Failed to parse")
+            end
+        end
+    end
+    
+    -- Test 3: Self critical heal parsing
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Test 3: Self Critical Heal Parsing")
+    local healTestMessages = {
+        "Your Heal critically heals Alice for 456.",
+        "Your Greater Heal heals Bob for 234. (Critical)",
+        "You critically heal Charlie for 123."
+    }
+    
+    for i = 1, table.getn(healTestMessages) do
+        local testMsg = healTestMessages[i]
+        DEFAULT_CHAT_FRAME:AddMessage("  Testing: " .. testMsg)
+        if HealerTracker then
+            local result = HealerTracker.ParseCriticalHeal(testMsg)
+            if result then
+                DEFAULT_CHAT_FRAME:AddMessage("    ✓ Parsed: " .. result.amount .. " (" .. result.spell .. " on " .. result.target .. ")")
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("    ✗ Failed to parse")
+            end
+        end
+    end
+    
+    -- Test 4: Group critical heal parsing
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Test 4: Group Critical Heal Parsing")
+    local groupHealTestMessages = {
+        "Priest's Heal critically heals Alice for 456.",
+        "Paladin's Greater Heal heals Bob for 234. (Critical)",
+        "Druid critically heals Charlie for 123."
+    }
+    
+    for i = 1, table.getn(groupHealTestMessages) do
+        local testMsg = groupHealTestMessages[i]
+        DEFAULT_CHAT_FRAME:AddMessage("  Testing: " .. testMsg)
+        if HealerTracker then
+            local result = HealerTracker.ParseGroupCriticalHeal(testMsg)
+            if result then
+                DEFAULT_CHAT_FRAME:AddMessage("    ✓ Parsed: " .. result.caster .. " - " .. result.amount .. " (" .. result.spell .. " on " .. result.target .. ")")
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("    ✗ Failed to parse")
+            end
+        end
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Test completed. Check results above.")
+    DEFAULT_CHAT_FRAME:AddMessage("================================")
+end
+
+-- Specific test command for Fred's Arcane Explosion issue
+SLASH_CRITTESTFRED1 = "/crittestfred"
+SlashCmdList["CRITTESTFRED"] = function(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("=== Testing Fred's Arcane Explosion Issue ===")
+    
+    local testMessage = "Fred's Arcane Explosion crits Kobold for 245 damage."
+    DEFAULT_CHAT_FRAME:AddMessage("Testing message: " .. testMessage)
+    
+    if CombatLogParser then
+        local result = CombatLogParser.ParseOtherPlayerCrit(testMessage)
+        if result then
+            DEFAULT_CHAT_FRAME:AddMessage("✓ SUCCESS:")
+            DEFAULT_CHAT_FRAME:AddMessage("  Player Name: '" .. result.playerName .. "'")
+            DEFAULT_CHAT_FRAME:AddMessage("  Spell Name: '" .. result.spell .. "'")
+            DEFAULT_CHAT_FRAME:AddMessage("  Damage: " .. result.amount)
+            
+            if result.playerName == "Fred" and result.spell == "Arcane Explosion" then
+                DEFAULT_CHAT_FRAME:AddMessage("✓ PERFECT: Names parsed correctly!")
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("✗ ISSUE: Expected Fred/Arcane Explosion but got " .. result.playerName .. "/" .. result.spell)
+            end
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("✗ FAILED: Could not parse the message")
+        end
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("✗ ERROR: CombatLogParser module not loaded")
+    end
+    
+    -- Test variations
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Testing similar variations:")
+    
+    local variations = {
+        "Fred's Fireball crits Orc for 456 damage.",
+        "Gandalf's Shadow Bolt crits Skeleton for 321 damage.",
+        "Alice's Ice Blast crits Rat for 123 damage."
+    }
+    
+    for i = 1, table.getn(variations) do
+        local testMsg = variations[i]
+        DEFAULT_CHAT_FRAME:AddMessage("  " .. testMsg)
+        
+        if CombatLogParser then
+            local result = CombatLogParser.ParseOtherPlayerCrit(testMsg)
+            if result then
+                DEFAULT_CHAT_FRAME:AddMessage("    → " .. result.playerName .. " cast " .. result.spell .. " for " .. result.amount)
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("    → Failed to parse")
+            end
+        end
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=======================================")
 end
 
 DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Addon loaded for 1.12 Vanilla!")
