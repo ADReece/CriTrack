@@ -1,0 +1,9 @@
+## Interface: 11000
+## Title: CritTrack
+## Notes: Tracks your highest crit and announces when you beat it.
+## Author: Xzfc
+## Version: 1.0
+
+## SavedVariables: CritTrackerDB
+
+CriTrack.lua
