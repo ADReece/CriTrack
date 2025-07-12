@@ -145,7 +145,7 @@ end
 -- Get a proper spell name from damage type (1.12 compatible)
 local function GetSpellNameFromDamageType(damageType)
     if not damageType then
-        return "Melee Attack"
+        return "Auto Attack"
     end
     
     local upper = string.upper(damageType)
@@ -157,27 +157,33 @@ local function GetSpellNameFromDamageType(damageType)
     
     -- Map damage types to more readable names
     if upper == "WOUND" then
-        return "Melee Attack"
+        return "Auto Attack"  -- More accurate than "Melee Attack"
     elseif upper == "DAMAGE" then
         return "Ability"
     elseif upper == "FIRE" then
-        return "Fire Damage"
+        return "Fire Spell"
     elseif upper == "FROST" then
-        return "Frost Damage"
+        return "Frost Spell"
     elseif upper == "NATURE" then
-        return "Nature Damage"
+        return "Nature Spell"
     elseif upper == "SHADOW" then
-        return "Shadow Damage"
+        return "Shadow Spell"
     elseif upper == "ARCANE" then
-        return "Arcane Damage"
+        return "Arcane Spell"
     elseif upper == "HOLY" then
-        return "Holy Damage"
+        return "Holy Spell"
+    elseif upper == "PHYSICAL" then
+        return "Physical Ability"
     else
         -- If it's not a recognized damage type, it might be a spell name
         -- Capitalize first letter for better display
-        local firstLetter = string.sub(damageType, 1, 1)
-        local rest = string.sub(damageType, 2)
-        return string.upper(firstLetter) .. string.lower(rest)
+        if string.len(damageType) > 0 then
+            local firstLetter = string.sub(damageType, 1, 1)
+            local rest = string.sub(damageType, 2)
+            return string.upper(firstLetter) .. string.lower(rest)
+        else
+            return "Unknown Spell"
+        end
     end
 end
 
@@ -267,16 +273,15 @@ local function OnEvent()
             if personalRecord then
                 -- Always announce personal records
                 if competitionMode and competitionResult.updated and competitionResult.isNewLeader then
+                    -- Personal record that also makes you group leader
                     SendChatMessage("New group crit record: " .. critAmount .. " (" .. spellName .. ") by " .. playerName .. "!", announcementChannel)
                 else
+                    -- Just a personal record
                     SendChatMessage("New crit record: " .. critAmount .. " (" .. spellName .. ")!", announcementChannel)
                 end
-            else
-                -- Not a personal record, but maybe announce if it's a competition leadership change
-                if competitionMode and competitionResult.updated and competitionResult.leadershipChanged and competitionResult.isNewLeader then
-                    SendChatMessage("New group crit leader: " .. critAmount .. " (" .. spellName .. ") by " .. playerName .. "!", announcementChannel)
-                end
             end
+            -- Note: We don't announce non-personal-record crits from UNIT_COMBAT since they're always YOUR crits
+            -- Group leadership changes from other players are handled via /critadd command
             
             if not personalRecord then
                 DebugMessage("Crit not higher than current personal record (" .. highestCrit .. ")")
@@ -387,6 +392,39 @@ SlashCmdList["CRITTEST"] = function(msg)
     else
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test amount must be higher than current record (" .. highestCrit .. ")")
     end
+end
+
+-- Help command to show all available commands
+SLASH_CRITHELP1 = "/crithelp"
+SlashCmdList["CRITHELP"] = function(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00=== CriTrack Help ===|r")
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Core Commands:|r")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crithigh|r - Show your current highest crit")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critreset|r - Reset your personal crit record to 0")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critchannel <channel>|r - Set announcement channel")
+    DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccChannels: say, party, raid, guild, yell|r")
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Competition Mode:|r")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critcomp|r - Show competition status")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critcomp on|r - Enable group crit tracking")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critcomp off|r - Disable competition mode")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critcomp reset|r - Clear competition leaderboard")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critadd <player> <amount> [spell]|r - Add player's crit")
+    DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /critadd Gandalf 450 Fireball|r")
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Leaderboard:|r")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critboard|r - Show leaderboard in chat")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critboard announce|r - Share leaderboard publicly")
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Debug & Testing:|r")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critdebug|r - Show debug information")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critdebug on/off|r - Enable/disable debug messages")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critdebug player/party|r - Set debug scope")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittest <amount>|r - Set test crit for debugging")
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("|cffccccccFor detailed help on any command, try the command without arguments.|r")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00==================|r")
 end
 
 -- Add player crit to competition (manual entry)
