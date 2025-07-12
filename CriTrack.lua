@@ -1,3 +1,5 @@
+DEFAULT_CHAT_FRAME:AddMessage("CriTrack is being loaded...")
+
 local CriTrack = CreateFrame("Frame")
 
 CriTrackDB = CriTrackDB or {}
