@@ -1,9 +1,8 @@
 ## Interface: 11200
-## Title: CritTrack
-## Notes: Tracks your highest crit and announces when you beat it.
-## Author: Xzfc
+## Title: CriTrack
+## Notes: Tracks your highest critical hit and announces when you beat it.
+## Author: Reece
 ## Version: 1.0
-
-## SavedVariables: CritTrackerDB
+## SavedVariables: CriTrackDB
 
 CriTrack.lua
