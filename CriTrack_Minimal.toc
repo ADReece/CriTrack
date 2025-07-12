@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: CriTrack Minimal
+## Notes: Minimal version for testing
+## Author: Reece
+## Version: 1.0
+## SavedVariables: CriTrackDB
+
+CriTrack_Minimal.lua

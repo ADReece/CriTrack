@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: CriTrack
+## Notes: Tracks your highest critical hit and announces when you beat it. Compatible with Turtle WoW.
+## Author: Reece
+## Version: 1.1
+## SavedVariables: CriTrackDB
+
+CriTrack.lua
