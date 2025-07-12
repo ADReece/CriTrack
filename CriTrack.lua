@@ -142,95 +142,82 @@ local function GetCompetitionLeader()
     return leader
 end
 
--- Get a proper spell name from damage type (1.12 compatible)
-local function GetSpellNameFromDamageType(damageType)
-    if not damageType then
-        return "Unknown Attack"
+-- Function to parse combat log messages for critical hits
+local function ParseCombatMessage(message)
+    if not message then return nil end
+    
+    -- Pattern for critical hits: "Your [Spell] crits Target for X damage"
+    -- or "You crit Target for X damage" for auto-attacks
+    local critAmount, target = string.match(message, "crits? .* for (%d+)")
+    if not critAmount then
+        critAmount, target = string.match(message, "critical hit .* for (%d+)")
     end
     
-    local upper = string.upper(damageType)
-    
-    -- Skip heals entirely
-    if upper == "HEAL" then
-        return nil
-    end
-    
-    -- Map damage types to more readable names
-    if upper == "WOUND" then
-        -- WOUND can be auto-attack OR spell damage in Turtle WoW
-        -- We'll need additional context to distinguish
-        return "Attack"  -- Generic since it could be auto-attack or spell
-    elseif upper == "DAMAGE" then
-        return "Ability"
-    elseif upper == "FIRE" then
-        return "Fire Spell"
-    elseif upper == "FROST" then
-        return "Frost Spell"
-    elseif upper == "NATURE" then
-        return "Nature Spell"
-    elseif upper == "SHADOW" then
-        return "Shadow Spell"
-    elseif upper == "ARCANE" then
-        return "Arcane Spell"
-    elseif upper == "HOLY" then
-        return "Holy Spell"
-    elseif upper == "PHYSICAL" then
-        return "Physical Ability"
-    else
-        -- If it's not a recognized damage type, it might be a spell name
-        -- Capitalize first letter for better display
-        if string.len(damageType) > 0 then
-            local firstLetter = string.sub(damageType, 1, 1)
-            local rest = string.sub(damageType, 2)
-            return string.upper(firstLetter) .. string.lower(rest)
-        else
-            return "Unknown Attack"
+    if critAmount then
+        critAmount = tonumber(critAmount)
+        
+        -- Try to extract spell name
+        local spellName = nil
+        
+        -- Pattern: "Your [SpellName] crits"
+        spellName = string.match(message, "Your ([^%s]+) crits")
+        if not spellName then
+            -- Pattern: "Your [SpellName] critically hits"
+            spellName = string.match(message, "Your ([^%s]+) critically hits")
         end
+        
+        if not spellName then
+            -- If no spell name found, it's likely an auto-attack
+            spellName = "Auto Attack"
+        end
+        
+        return {
+            amount = critAmount,
+            spell = spellName,
+            target = target
+        }
     end
-end
-
--- Try to get the last spell cast by the player (1.12 compatible)
-local lastSpellCast = nil
-local lastSpellTime = 0
-
-local function GetLastSpellName()
-    -- In 1.12, we can try to track the last spell cast
-    -- This is a fallback when damage type doesn't give us enough info
-    if lastSpellCast and GetTime() - lastSpellTime < 5 then -- Within 5 seconds
-        return lastSpellCast
-    end
+    
     return nil
 end
 
--- Function to detect if this is likely a spell vs auto-attack
-local function IsLikelySpellDamage(damageType, amount)
-    local upper = string.upper(damageType or "")
+-- Function to parse combat log messages for critical hits
+local function ParseCombatMessage(message)
+    if not message then return nil end
     
-    -- Definitely spell damage types
-    if upper == "FIRE" or upper == "FROST" or upper == "NATURE" or 
-       upper == "SHADOW" or upper == "ARCANE" or upper == "HOLY" then
-        return true
+    -- Pattern for critical hits: "Your [Spell] crits Target for X damage"
+    -- or "You crit Target for X damage" for auto-attacks
+    local critAmount, target = string.match(message, "crits? .* for (%d+)")
+    if not critAmount then
+        critAmount, target = string.match(message, "critical hit .* for (%d+)")
     end
     
-    -- For WOUND damage, we need to guess based on context
-    if upper == "WOUND" then
-        -- If we recently cast a spell, assume it's spell damage
-        local recentSpell = GetLastSpellName()
-        if recentSpell then
-            return true, recentSpell
+    if critAmount then
+        critAmount = tonumber(critAmount)
+        
+        -- Try to extract spell name
+        local spellName = nil
+        
+        -- Pattern: "Your [SpellName] crits"
+        spellName = string.match(message, "Your ([^%s]+) crits")
+        if not spellName then
+            -- Pattern: "Your [SpellName] critically hits"
+            spellName = string.match(message, "Your ([^%s]+) critically hits")
         end
         
-        -- For mages, high damage amounts are very likely to be spells
-        -- Auto-attacks for mages are typically quite low
-        if amount and amount > 100 then  -- Lowered threshold for mages
-            return true, "Spell"
+        if not spellName then
+            -- If no spell name found, it's likely an auto-attack
+            spellName = "Auto Attack"
         end
         
-        -- Otherwise assume auto-attack
-        return false, "Auto Attack"
+        return {
+            amount = critAmount,
+            spell = spellName,
+            target = target
+        }
     end
     
-    return false, "Unknown"
+    return nil
 end
 
 -- Event handler compatible with 1.12
@@ -268,103 +255,23 @@ local function OnEvent()
         
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")" .. debugText .. competitionText)
         
-    elseif event == "SPELLCAST_SENT" then
-        -- Track when player starts casting a spell (1.12 compatible)
+    elseif event == "CHAT_MSG_COMBAT_SELF_HITS" or event == "CHAT_MSG_SPELL_SELF_DAMAGE" then
+        -- Parse combat log messages for critical hits
+        local message = arg1 -- arg1 contains the combat message
+        
         if debugEnabled then
-            DebugMessage("SPELLCAST_SENT: " .. tostring(arg1))
+            DebugMessage("Combat message (" .. event .. "): " .. tostring(message))
         end
         
-    elseif event == "SPELLCAST_SUCCESS" then
-        -- Track when player successfully casts a spell (1.12 compatible)
-        if arg1 and arg1 ~= "" then
-            lastSpellCast = arg1
-            lastSpellTime = GetTime()
-            if debugEnabled then
-                DebugMessage("SPELLCAST_SUCCESS: " .. tostring(arg1) .. " (tracked for next crit)")
-            end
-        end
-        
-    elseif event == "SPELLCAST_CHANNEL_START" then
-        -- Track channeled spells
-        if debugEnabled then
-            DebugMessage("SPELLCAST_CHANNEL_START: " .. tostring(arg1))
-        end
-        
-    elseif event == "SPELLCAST_CHANNEL_STOP" then
-        -- Track channeled spells completion
-        if arg1 and arg1 ~= "" then
-            lastSpellCast = arg1
-            lastSpellTime = GetTime()
-            if debugEnabled then
-                DebugMessage("SPELLCAST_CHANNEL_STOP: " .. tostring(arg1) .. " (tracked for next crit)")
-            end
-        end
-        
-    elseif event == "UNIT_COMBAT" then
-        -- Debug all UNIT_COMBAT events if debug is enabled
-        if debugEnabled then
-            DebugMessage("UNIT_COMBAT triggered")
-            DebugMessage("arg1=" .. tostring(arg1) .. ", arg2=" .. tostring(arg2) .. ", arg3=" .. tostring(arg3) .. ", arg4=" .. tostring(arg4) .. ", arg5=" .. tostring(arg5))
+        local critData = ParseCombatMessage(message)
+        if critData then
+            local critAmount = critData.amount
+            local spellName = critData.spell
+            local target = critData.target
             
-            -- Determine combat direction
-            if arg1 == "player" then
-                DebugMessage("DIRECTION: Something hit YOU (incoming damage)")
-            else
-                DebugMessage("DIRECTION: YOU hit something (outgoing damage)")
-            end
+            DebugMessage("Critical hit parsed! Amount=" .. tostring(critAmount) .. ", Spell=" .. tostring(spellName) .. ", Target=" .. tostring(target))
             
-            -- Additional debug info
-            if arg1 then
-                DebugMessage("Target exists: " .. tostring(UnitExists(arg1)))
-                if UnitExists(arg1) then
-                    DebugMessage("Target name: " .. tostring(UnitName(arg1)))
-                end
-            end
-            
-            -- Show weapon info (for auto-attacks)
-            local mainHandLink = GetInventoryItemLink("player", 16)
-            if mainHandLink then
-                DebugMessage("Main hand weapon: " .. mainHandLink)
-            end
-        end
-        
-        -- 1.12 UNIT_COMBAT event handling - check for critical hits
-        -- In 1.12, UNIT_COMBAT fires for ANY combat involving you (incoming AND outgoing)
-        -- We need to distinguish between you hitting something vs something hitting you
-        -- arg1 = unit involved, arg2 = damage type, arg3 = "CRITICAL" for crits, arg4 = damage amount
-        if arg3 == "CRITICAL" then
-            -- Check if this is incoming damage (something hit you) vs outgoing (you hit something)
-            -- If arg1 is "player", then something hit YOU - skip this
-            if arg1 == "player" then
-                DebugMessage("Skipping incoming crit damage to player")
-                return
-            end
-            local critAmount = tonumber(arg4) -- arg4=damage amount
-            local damageType = arg2 or "WOUND"
-            
-            -- Skip healing crits - we only want damage crits
-            if string.upper(damageType) == "HEAL" then
-                DebugMessage("Skipping heal crit: " .. tostring(critAmount))
-                return
-            end
-            
-            -- Try to determine if this is a spell or auto-attack
-            local isSpell, spellName = IsLikelySpellDamage(damageType, critAmount)
-            
-            if not spellName then
-                spellName = GetSpellNameFromDamageType(damageType)
-            end
-            
-            if not spellName then
-                DebugMessage("Skipping unknown damage type: " .. tostring(damageType))
-                return
-            end
-            
-            DebugMessage("Damage type '" .. tostring(damageType) .. "' -> " .. (isSpell and "SPELL" or "AUTO-ATTACK") .. " -> '" .. tostring(spellName) .. "'")
-            
-            local playerName = UnitName("player") -- Always the player since UNIT_COMBAT fires for your hits
-            
-            DebugMessage("Critical hit detected! Amount=" .. tostring(critAmount) .. ", Type=" .. tostring(spellName) .. ", Target=" .. tostring(arg1))
+            local playerName = UnitName("player")
             
             -- Handle personal record
             local personalRecord = false
@@ -394,14 +301,10 @@ local function OnEvent()
                     SendChatMessage("New crit record: " .. critAmount .. " (" .. spellName .. ")!", announcementChannel)
                 end
             end
-            -- Note: We don't announce non-personal-record crits from UNIT_COMBAT since they're always YOUR crits
-            -- Group leadership changes from other players are handled via /critadd command
             
             if not personalRecord then
                 DebugMessage("Crit not higher than current personal record (" .. highestCrit .. ")")
             end
-        elseif debugEnabled then
-            DebugMessage("Not a critical hit - arg3=" .. tostring(arg3))
         end
     end
 end
@@ -409,11 +312,8 @@ end
 -- Set up event handler (1.12 style)
 CriTrack:SetScript("OnEvent", OnEvent)
 CriTrack:RegisterEvent("PLAYER_LOGIN")
-CriTrack:RegisterEvent("UNIT_COMBAT")
-CriTrack:RegisterEvent("SPELLCAST_CHANNEL_START")
-CriTrack:RegisterEvent("SPELLCAST_CHANNEL_STOP")
-CriTrack:RegisterEvent("SPELLCAST_SENT")
-CriTrack:RegisterEvent("SPELLCAST_SUCCESS")
+CriTrack:RegisterEvent("CHAT_MSG_COMBAT_SELF_HITS")
+CriTrack:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 
 -- Slash commands (1.12 compatible)
 SLASH_CRITCHANNEL1 = "/critchannel"
