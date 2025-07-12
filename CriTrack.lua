@@ -43,18 +43,29 @@ local function OnEvent()
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")")
         
     elseif event == "UNIT_COMBAT" then
+        -- Debug: Show all event arguments for 1.12 troubleshooting
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: UNIT_COMBAT triggered")
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: arg1=" .. tostring(arg1) .. ", arg2=" .. tostring(arg2) .. ", arg3=" .. tostring(arg3) .. ", arg4=" .. tostring(arg4) .. ", arg5=" .. tostring(arg5))
+        
         -- 1.12 UNIT_COMBAT event handling
         if arg1 == "player" and arg5 == 1 then -- arg1=unit, arg5=isCrit
             local critAmount = tonumber(arg3) -- arg3=damage
             local spellName = arg2 or "Melee Attack" -- arg2=action/spell
+            
+            DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: Player crit detected! Amount=" .. tostring(critAmount) .. ", Spell=" .. tostring(spellName))
             
             if critAmount and critAmount > highestCrit then
                 highestCrit = critAmount
                 highestCritSpell = spellName
                 CriTrackDB.highestCrit = highestCrit
                 CriTrackDB.highestCritSpell = highestCritSpell
+                DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: New record set!")
                 SendChatMessage("New crit record: " .. critAmount .. " (" .. spellName .. ")!", announcementChannel)
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: Crit not higher than current record (" .. highestCrit .. ")")
             end
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: Not player crit - arg1=" .. tostring(arg1) .. ", arg5=" .. tostring(arg5))
         end
     end
 end
@@ -110,6 +121,22 @@ SlashCmdList["CRITDEBUG"] = function()
     end
     DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, UNIT_COMBAT")
     DEFAULT_CHAT_FRAME:AddMessage("==========================")
+end
+
+-- Test command to manually set a crit (for debugging)
+SLASH_CRITTEST1 = "/crittest"
+SlashCmdList["CRITTEST"] = function(msg)
+    local testAmount = tonumber(msg) or 100
+    if testAmount > highestCrit then
+        highestCrit = testAmount
+        highestCritSpell = "Test Spell"
+        CriTrackDB.highestCrit = highestCrit
+        CriTrackDB.highestCritSpell = highestCritSpell
+        SendChatMessage("New crit record: " .. testAmount .. " (Test Spell)!", announcementChannel)
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test crit set to " .. testAmount)
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test amount must be higher than current record (" .. highestCrit .. ")")
+    end
 end
 
 DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Addon loaded for 1.12 Vanilla!")
