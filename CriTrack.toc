@@ -2,7 +2,10 @@
 ## Title: CriTrack
 ## Notes: Tracks your highest critical hit and announces new records
 ## Author: Reece
-## Version: 1.5
+## Version: 2.0
 ## SavedVariables: CriTrackDB
 
+Utils.lua
+CombatLogParser.lua
+CompetitionManager.lua
 CriTrack.lua
