@@ -1,8 +1,8 @@
 ## Interface: 11200
 ## Title: CriTrack
 ## Notes: Tracks your highest critical hit and announces new records
-## Author: Reece  
-## Version: 1.2
+## Author: Reece
+## Version: 1.3
 ## SavedVariables: CriTrackDB
 
 CriTrack.lua
