@@ -12,6 +12,9 @@ local announcementChannel = "SAY"
 local debugEnabled = false
 local debugMode = "player" -- "player" or "party"
 
+-- Loading state
+local modulesLoaded = false
+
 -- Module references will be available after .toc loads them
 local DebugMessage
 
@@ -27,6 +30,16 @@ local function InitializeModules()
             end
         end
     end
+    
+    -- Debug module loading
+    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Initializing modules...")
+    DEFAULT_CHAT_FRAME:AddMessage("  Utils: " .. tostring(Utils ~= nil))
+    DEFAULT_CHAT_FRAME:AddMessage("  CombatLogParser: " .. tostring(CombatLogParser ~= nil))
+    DEFAULT_CHAT_FRAME:AddMessage("  CompetitionManager: " .. tostring(CompetitionManager ~= nil))
+    DEFAULT_CHAT_FRAME:AddMessage("  HealerTracker: " .. tostring(HealerTracker ~= nil))
+    
+    -- Set loading state
+    modulesLoaded = true
 end
 
 
@@ -96,6 +109,12 @@ local function OnEvent()
         end
         
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack v2.0 loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")" .. debugText .. competitionText .. healerText)
+        
+        -- Final loading confirmation
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: All modules initialized successfully!")
+        if HealerTracker then
+            DEFAULT_CHAT_FRAME:AddMessage("  - Healer tracking available: Use /critheal to configure")
+        end
         
     elseif event == "CHAT_MSG_COMBAT_SELF_HITS" or event == "CHAT_MSG_SPELL_SELF_DAMAGE" then
         -- Parse combat log messages for critical hits
@@ -242,7 +261,21 @@ CriTrack:RegisterEvent("CHAT_MSG_COMBAT_FRIENDLY_BUFF")
 -- Slash commands (1.12 compatible)
 SLASH_CRITCHANNEL1 = "/critchannel"
 SlashCmdList["CRITCHANNEL"] = function(msg)
-    local newChannel = Utils.GetValidChannel(msg)
+    local newChannel = nil
+    if Utils and Utils.GetValidChannel then
+        newChannel = Utils.GetValidChannel(msg)
+    else
+        -- Fallback channel validation
+        local channels = {"SAY", "PARTY", "RAID", "GUILD", "YELL"}
+        local upperMsg = string.upper(msg or "")
+        for _, channel in channels do
+            if upperMsg == channel then
+                newChannel = channel
+                break
+            end
+        end
+    end
+    
     if newChannel then
         announcementChannel = newChannel
         CriTrackDB.announcementChannel = newChannel
@@ -275,7 +308,11 @@ SLASH_CRITDEBUG1 = "/critdebug"
 SlashCmdList["CRITDEBUG"] = function(msg)
     if not msg or msg == "" then
         -- Show current debug status
-        local stats = CompetitionManager.GetStats()
+        local stats = {enabled = false, participantCount = 0}
+        if CompetitionManager then
+            stats = CompetitionManager.GetStats()
+        end
+        
         local healerStats = nil
         if HealerTracker then
             healerStats = HealerTracker.GetStats()
@@ -292,6 +329,11 @@ SlashCmdList["CRITDEBUG"] = function(msg)
         if stats.enabled then
             DEFAULT_CHAT_FRAME:AddMessage("Competition Entries: " .. stats.participantCount)
         end
+        DEFAULT_CHAT_FRAME:AddMessage("Modules Loaded:")
+        DEFAULT_CHAT_FRAME:AddMessage("  Utils: " .. tostring(Utils ~= nil))
+        DEFAULT_CHAT_FRAME:AddMessage("  CombatLogParser: " .. tostring(CombatLogParser ~= nil))
+        DEFAULT_CHAT_FRAME:AddMessage("  CompetitionManager: " .. tostring(CompetitionManager ~= nil))
+        DEFAULT_CHAT_FRAME:AddMessage("  HealerTracker: " .. tostring(HealerTracker ~= nil))
         if healerStats then
             DEFAULT_CHAT_FRAME:AddMessage("Healer Mode: " .. tostring(healerStats.enabled))
             DEFAULT_CHAT_FRAME:AddMessage("Healer Group Mode: " .. tostring(healerStats.groupMode))
@@ -302,7 +344,13 @@ SlashCmdList["CRITDEBUG"] = function(msg)
                 end
             end
         end
-        DEFAULT_CHAT_FRAME:AddMessage("Player Name: " .. Utils.GetPlayerName())
+        local playerName = "Unknown"
+        if Utils and Utils.GetPlayerName then
+            playerName = Utils.GetPlayerName()
+        else
+            playerName = UnitName("player") or "Unknown"
+        end
+        DEFAULT_CHAT_FRAME:AddMessage("Player Name: " .. playerName)
         DEFAULT_CHAT_FRAME:AddMessage("CriTrackDB exists: " .. tostring(CriTrackDB ~= nil))
         if CriTrackDB then
             DEFAULT_CHAT_FRAME:AddMessage("Saved Crit: " .. tostring(CriTrackDB.highestCrit or 0))
@@ -438,13 +486,41 @@ end
 -- Add player crit to competition (manual entry)
 SLASH_CRITADD1 = "/critadd"
 SlashCmdList["CRITADD"] = function(msg)
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition module not loaded!")
+        return
+    end
+    
     if not CompetitionManager.IsEnabled() then
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition mode is not enabled. Use /critcomp on to enable it.")
         return
     end
     
     -- Parse the command using Utils
-    local parsed = Utils.ParseCommand(msg, "player_amount_spell")
+    local parsed = nil
+    if Utils and Utils.ParseCommand then
+        parsed = Utils.ParseCommand(msg, "player_amount_spell")
+    else
+        -- Fallback parsing for Lua 5.0 compatibility
+        local words = {}
+        local start = 1
+        while start <= string.len(msg) do
+            local wordStart, wordEnd = string.find(msg, "%S+", start)
+            if wordStart then
+                table.insert(words, string.sub(msg, wordStart, wordEnd))
+                start = wordEnd + 1
+            else
+                break
+            end
+        end
+        if table.getn(words) >= 2 then
+            parsed = {
+                playerName = words[1],
+                amount = tonumber(words[2]),
+                spellName = words[3] or "Unknown"
+            }
+        end
+    end
     
     if not parsed or not parsed.playerName or not parsed.amount then
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Usage - /critadd PlayerName Amount [SpellName]")
@@ -480,6 +556,11 @@ end
 SLASH_CRITCOMPETITION1 = "/critcompetition"
 SLASH_CRITCOMPETITION2 = "/critcomp"
 SlashCmdList["CRITCOMPETITION"] = function(msg)
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition module not loaded!")
+        return
+    end
+    
     if not msg or msg == "" then
         -- Show current competition status
         local stats = CompetitionManager.GetStats()
@@ -519,6 +600,11 @@ end
 SLASH_CRITLEADERBOARD1 = "/critleaderboard"
 SLASH_CRITLEADERBOARD2 = "/critboard"
 SlashCmdList["CRITLEADERBOARD"] = function(msg)
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition module not loaded!")
+        return
+    end
+    
     if not CompetitionManager.IsEnabled() then
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition mode is not enabled. Use /critcomp on to enable it.")
         return
@@ -544,9 +630,16 @@ SlashCmdList["CRITLEADERBOARD"] = function(msg)
         for i = 1, table.getn(sortedData) do
             local entry = sortedData[i]
             local medal = ""
-            if i == 1 then medal = Utils.FormatMessage("🥇", "yellow") .. " "
-            elseif i == 2 then medal = Utils.FormatMessage("🥈", "gray") .. " "
-            elseif i == 3 then medal = Utils.FormatMessage("🥉", "yellow") .. " "
+            if Utils and Utils.FormatMessage then
+                if i == 1 then medal = Utils.FormatMessage("🥇", "yellow") .. " "
+                elseif i == 2 then medal = Utils.FormatMessage("🥈", "gray") .. " "
+                elseif i == 3 then medal = Utils.FormatMessage("🥉", "yellow") .. " "
+                end
+            else
+                if i == 1 then medal = "|cffff9900[1st]|r "
+                elseif i == 2 then medal = "|cffcccccc[2nd]|r "
+                elseif i == 3 then medal = "|cffff9900[3rd]|r "
+                end
             end
             DEFAULT_CHAT_FRAME:AddMessage(medal .. i .. ". " .. entry.playerName .. ": " .. entry.critAmount .. " (" .. entry.spellName .. ")")
         end
@@ -559,8 +652,14 @@ end
 SLASH_CRITHEAL1 = "/critheal"
 SLASH_CRITHEAL2 = "/healer"
 SlashCmdList["CRITHEAL"] = function(msg)
+    if not modulesLoaded then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Addon still loading, please wait...")
+        return
+    end
+    
     if not HealerTracker then
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Healer module not loaded!")
+        DEFAULT_CHAT_FRAME:AddMessage("Try running '/critdebug' to see module loading status")
         return
     end
     
