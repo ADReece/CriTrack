@@ -145,7 +145,7 @@ end
 -- Get a proper spell name from damage type (1.12 compatible)
 local function GetSpellNameFromDamageType(damageType)
     if not damageType then
-        return "Auto Attack"
+        return "Unknown Attack"
     end
     
     local upper = string.upper(damageType)
@@ -157,7 +157,9 @@ local function GetSpellNameFromDamageType(damageType)
     
     -- Map damage types to more readable names
     if upper == "WOUND" then
-        return "Auto Attack"  -- More accurate than "Melee Attack"
+        -- WOUND can be auto-attack OR spell damage in Turtle WoW
+        -- We'll need additional context to distinguish
+        return "Attack"  -- Generic since it could be auto-attack or spell
     elseif upper == "DAMAGE" then
         return "Ability"
     elseif upper == "FIRE" then
@@ -182,9 +184,52 @@ local function GetSpellNameFromDamageType(damageType)
             local rest = string.sub(damageType, 2)
             return string.upper(firstLetter) .. string.lower(rest)
         else
-            return "Unknown Spell"
+            return "Unknown Attack"
         end
     end
+end
+
+-- Try to get the last spell cast by the player (1.12 compatible)
+local lastSpellCast = nil
+local lastSpellTime = 0
+
+local function GetLastSpellName()
+    -- In 1.12, we can try to track the last spell cast
+    -- This is a fallback when damage type doesn't give us enough info
+    if lastSpellCast and GetTime() - lastSpellTime < 5 then -- Within 5 seconds
+        return lastSpellCast
+    end
+    return nil
+end
+
+-- Function to detect if this is likely a spell vs auto-attack
+local function IsLikelySpellDamage(damageType, amount)
+    local upper = string.upper(damageType or "")
+    
+    -- Definitely spell damage types
+    if upper == "FIRE" or upper == "FROST" or upper == "NATURE" or 
+       upper == "SHADOW" or upper == "ARCANE" or upper == "HOLY" then
+        return true
+    end
+    
+    -- For WOUND damage, we need to guess based on context
+    if upper == "WOUND" then
+        -- If we recently cast a spell, assume it's spell damage
+        local recentSpell = GetLastSpellName()
+        if recentSpell then
+            return true, recentSpell
+        end
+        
+        -- High damage amounts are more likely to be spells (rough heuristic)
+        if amount and amount > 200 then
+            return true, "Spell"
+        end
+        
+        -- Otherwise assume auto-attack
+        return false, "Auto Attack"
+    end
+    
+    return false, "Unknown"
 end
 
 -- Event handler compatible with 1.12
@@ -222,11 +267,41 @@ local function OnEvent()
         
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")" .. debugText .. competitionText)
         
+    elseif event == "SPELLCAST_START" then
+        -- Track when player starts casting a spell
+        if debugEnabled then
+            DebugMessage("SPELLCAST_START: " .. tostring(arg1))
+        end
+        
+    elseif event == "SPELLCAST_STOP" then
+        -- Track when player finishes casting a spell
+        if arg1 and arg1 ~= "" then
+            lastSpellCast = arg1
+            lastSpellTime = GetTime()
+            if debugEnabled then
+                DebugMessage("SPELLCAST_STOP: " .. tostring(arg1) .. " (tracked for next crit)")
+            end
+        end
+        
     elseif event == "UNIT_COMBAT" then
         -- Debug all UNIT_COMBAT events if debug is enabled
         if debugEnabled then
             DebugMessage("UNIT_COMBAT triggered")
             DebugMessage("arg1=" .. tostring(arg1) .. ", arg2=" .. tostring(arg2) .. ", arg3=" .. tostring(arg3) .. ", arg4=" .. tostring(arg4) .. ", arg5=" .. tostring(arg5))
+            
+            -- Additional debug info
+            if arg1 then
+                DebugMessage("Target exists: " .. tostring(UnitExists(arg1)))
+                if UnitExists(arg1) then
+                    DebugMessage("Target name: " .. tostring(UnitName(arg1)))
+                end
+            end
+            
+            -- Show weapon info (for auto-attacks)
+            local mainHandLink = GetInventoryItemLink("player", 16)
+            if mainHandLink then
+                DebugMessage("Main hand weapon: " .. mainHandLink)
+            end
         end
         
         -- 1.12 UNIT_COMBAT event handling - check for critical hits
@@ -242,11 +317,19 @@ local function OnEvent()
                 return
             end
             
-            local spellName = GetSpellNameFromDamageType(damageType) -- Convert damage type to readable name
+            -- Try to determine if this is a spell or auto-attack
+            local isSpell, spellName = IsLikelySpellDamage(damageType, critAmount)
+            
+            if not spellName then
+                spellName = GetSpellNameFromDamageType(damageType)
+            end
+            
             if not spellName then
                 DebugMessage("Skipping unknown damage type: " .. tostring(damageType))
                 return
             end
+            
+            DebugMessage("Damage type '" .. tostring(damageType) .. "' -> " .. (isSpell and "SPELL" or "AUTO-ATTACK") .. " -> '" .. tostring(spellName) .. "'")
             
             local playerName = UnitName("player") -- Always the player since UNIT_COMBAT fires for your hits
             
@@ -296,6 +379,8 @@ end
 CriTrack:SetScript("OnEvent", OnEvent)
 CriTrack:RegisterEvent("PLAYER_LOGIN")
 CriTrack:RegisterEvent("UNIT_COMBAT")
+CriTrack:RegisterEvent("SPELLCAST_START")
+CriTrack:RegisterEvent("SPELLCAST_STOP")
 
 -- Slash commands (1.12 compatible)
 SLASH_CRITCHANNEL1 = "/critchannel"
