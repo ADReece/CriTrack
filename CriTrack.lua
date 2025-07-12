@@ -35,19 +35,11 @@ CriTrack:SetScript("OnEvent", function(self, event, ...)
     if event == "VARIABLES_LOADED" then
         highestCrit = CriTrackDB.highestCrit or 0
         announcementChannel = CriTrackDB.announcementChannel or "SAY"
+        print("|cff33ff99CriTrack loaded!|r Current high score: " .. highestCrit .. ". Announcing in: " .. announcementChannel)
     elseif event == "UNIT_COMBAT" then
         local unit, action, damage, _, isCrit = ...
         if unit == "player" and isCrit == 1 then
             local critAmount = tonumber(damage)
             if critAmount and critAmount > highestCrit then
                 highestCrit = critAmount
-                CriTrackDB.highestCrit = highestCrit
-                SendChatMessage("New crit highscore: " .. critAmount .. "!", announcementChannel)
-            end
-        end
-    end
-end)
-
--- Register events
-CriTrack:RegisterEvent("VARIABLES_LOADED")
-CriTrack:RegisterEvent("UNIT_COMBAT")
+                CriTrackDB.hi
