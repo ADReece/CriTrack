@@ -1,11 +1,21 @@
 
-DEFAULT_CHAT_FRAME:AddMessage("CriTrack is being loaded...")
+
+-- Debug: Try both DEFAULT_CHAT_FRAME and print for load message
+if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Lua loaded (DEFAULT_CHAT_FRAME)")
+else
+    print("CriTrack: Lua loaded (print fallback)")
+end
+
 
 
 local CriTrack = CreateFrame("Frame")
 
 
-CriTrackDB = CriTrackDB or {}
+
+-- Debug: Confirm global scope
+_G["CriTrackDB"] = _G["CriTrackDB"] or {}
+CriTrackDB = _G["CriTrackDB"]
 local highestCrit = 0
 local announcementChannel = "SAY"
 
@@ -22,8 +32,10 @@ local function NormalizeChannel(input)
     return map[string.lower(input or "")] or nil
 end
 
+
 -- Slash command to change the announcement channel
 SLASH_CRITCHANNEL1 = "/critchannel"
+SlashCmdList = SlashCmdList or {}
 SlashCmdList["CRITCHANNEL"] = function(msg)
     local newChannel = NormalizeChannel(msg)
     if newChannel then
@@ -36,9 +48,15 @@ SlashCmdList["CRITCHANNEL"] = function(msg)
 end
 
 
+
 -- Event handler
 CriTrack:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_LOGIN" then
+        if DEFAULT_CHAT_FRAME then
+            DEFAULT_CHAT_FRAME:AddMessage("CriTrack: PLAYER_LOGIN event fired!")
+        else
+            print("CriTrack: PLAYER_LOGIN event fired!")
+        end
         highestCrit = CriTrackDB.highestCrit or 0
         announcementChannel = CriTrackDB.announcementChannel or "SAY"
         print("|cff33ff99CriTrack loaded!|r Current high score: " .. highestCrit .. ". Announcing in: " .. announcementChannel)
