@@ -1,21 +1,20 @@
--- Debug: Try both DEFAULT_CHAT_FRAME and print for load message
-if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Lua loaded (Interface: " .. (GetAddOnMetadata("CriTrack", "Interface") or "Unknown") .. ")")
-else
-    print("CriTrack: Lua loaded (Interface: " .. (GetAddOnMetadata("CriTrack", "Interface") or "Unknown") .. ")")
-end
+-- Simple load message for interface 11200 compatibility
+print("CriTrack: Addon file loaded")
 
 local CriTrack = CreateFrame("Frame")
+print("CriTrack: Frame created")
 
--- Compatibility check for interface version 11200
-local function IsCompatibleInterface()
-    local version = tonumber(GetAddOnMetadata("CriTrack", "Interface"))
-    return version and version <= 11200
+-- Add immediate test command to verify loading
+SLASH_CRITTEST1 = "/crittest"
+SlashCmdList = SlashCmdList or {}
+SlashCmdList["CRITTEST"] = function(msg)
+    print("CriTrack: Addon is working! Type /critchannel, /crithigh, or /critreset")
 end
+print("CriTrack: Test command (/crittest) registered")
 
--- Initialize saved variables with validation
+-- Initialize saved variables with validation (delayed until PLAYER_LOGIN)
 local function InitializeSavedVariables()
-    -- Ensure SavedVariables are properly initialized for interface 11200
+    -- SavedVariables are only available after PLAYER_LOGIN in interface 11200
     if not CriTrackDB then
         CriTrackDB = {}
     end
@@ -30,11 +29,9 @@ local function InitializeSavedVariables()
     end
 end
 
--- Initialize on load
-InitializeSavedVariables()
-
-local highestCrit = CriTrackDB.highestCrit or 0
-local announcementChannel = CriTrackDB.announcementChannel or "SAY"
+-- Variables will be initialized in PLAYER_LOGIN event
+local highestCrit = 0
+local announcementChannel = "SAY"
 
 -- Normalize user input to valid chat channels
 local function NormalizeChannel(input)
@@ -49,20 +46,12 @@ local function NormalizeChannel(input)
     return map[string.lower(input or "")] or nil
 end
 
--- Safe chat message sending with error handling (compatible with 11200)
+-- Safe chat message sending (simplified for interface 11200)
 local function SafeSendChatMessage(message, channel)
     if not message or not channel then return end
     
-    -- For interface 11200, use simpler error handling
-    local success = pcall(SendChatMessage, message, channel)
-    
-    if not success then
-        print("|cff33ff99CriTrack|r: Error sending message to " .. channel)
-        -- Try fallback to SAY channel
-        if channel ~= "SAY" then
-            pcall(SendChatMessage, message, "SAY")
-        end
-    end
+    -- Simple approach for interface 11200
+    SendChatMessage(message, channel)
 end
 
 -- Slash command to change the announcement channel
@@ -96,19 +85,15 @@ end
 -- Event handler
 CriTrack:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_LOGIN" then
-        if DEFAULT_CHAT_FRAME then
-            DEFAULT_CHAT_FRAME:AddMessage("CriTrack: PLAYER_LOGIN event fired!")
-        else
-            print("CriTrack: PLAYER_LOGIN event fired!")
-        end
+        print("CriTrack: PLAYER_LOGIN event fired!")
         
-        -- Compatibility check
-        if not IsCompatibleInterface() then
-            print("|cffff0000CriTrack Warning|r: This addon is designed for interface 11200 (Turtle WoW)")
-        end
+        -- Initialize SavedVariables after login
+        InitializeSavedVariables()
         
+        -- Load values from SavedVariables
         highestCrit = CriTrackDB.highestCrit or 0
         announcementChannel = CriTrackDB.announcementChannel or "SAY"
+        
         print("|cff33ff99CriTrack loaded!|r Current high score: " .. highestCrit .. ". Announcing in: " .. announcementChannel)
     elseif event == "UNIT_COMBAT" then
         -- UNIT_COMBAT is the primary event for interface 11200 (Turtle WoW)
@@ -130,7 +115,9 @@ end)
 
 
 -- Register events
+print("CriTrack: Registering events...")
 CriTrack:RegisterEvent("PLAYER_LOGIN")
 CriTrack:RegisterEvent("UNIT_COMBAT")
 CriTrack:RegisterEvent("PLAYER_REGEN_DISABLED")  -- Enter combat
 CriTrack:RegisterEvent("PLAYER_REGEN_ENABLED")   -- Exit combat
+print("CriTrack: Events registered successfully")
