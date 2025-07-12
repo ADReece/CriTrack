@@ -44,4 +44,13 @@ CriTrack:SetScript("OnEvent", function(self, event, ...)
             local critAmount = tonumber(damage)
             if critAmount and critAmount > highestCrit then
                 highestCrit = critAmount
-                CriTrackDB.hi
+                CriTrackDB.highestCrit = highestCrit
+                SendChatMessage("New crit highscore: " .. critAmount .. "!", announcementChannel)
+            end
+        end
+    end
+end)
+
+-- Register events
+CriTrack:RegisterEvent("VARIABLES_LOADED")
+CriTrack:RegisterEvent("UNIT_COMBAT")
