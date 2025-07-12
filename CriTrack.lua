@@ -211,7 +211,8 @@ local function OnEvent()
         if HealerTracker and HealerTracker.IsEnabled() then
             local healData = HealerTracker.ParseCriticalHeal(message)
             if healData then
-                DebugMessage("Critical heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Target=" .. tostring(healData.target), debugEnabled)
+                local critText = healData.isCritical and " (CRITICAL)" or " (regular)"
+                DebugMessage("Heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Target=" .. tostring(healData.target) .. critText, debugEnabled)
                 
                 -- Update personal heal record
                 local personalHealRecord = HealerTracker.UpdatePersonalRecord(healData)
@@ -225,16 +226,29 @@ local function OnEvent()
                 -- Save healer data
                 if personalHealRecord or groupHealResult.updated then
                     CriTrackDB.healerData = HealerTracker.GetData()
+                    
+                    if debugEnabled then
+                        DebugMessage("Healer data saved. Personal record: " .. tostring(personalHealRecord), debugEnabled)
+                    end
                 end
                 
                 -- Announce heal records
                 if personalHealRecord then
+                    local critAnnounce = healData.isCritical and "New crit heal record" or "New heal record"
                     if HealerTracker.IsGroupModeEnabled() and groupHealResult.updated and groupHealResult.isNewLeader then
                         SendChatMessage("New group heal record: " .. healData.amount .. " (" .. healData.spell .. ") by " .. healData.caster .. " on " .. healData.target .. "!", announcementChannel)
                     else
-                        SendChatMessage("New heal record: " .. healData.amount .. " (" .. healData.spell .. ") on " .. healData.target .. "!", announcementChannel)
+                        SendChatMessage(critAnnounce .. ": " .. healData.amount .. " (" .. healData.spell .. ") on " .. healData.target .. "!", announcementChannel)
                     end
                 end
+            else
+                if debugEnabled then
+                    DebugMessage("No heal data parsed from message: " .. tostring(message), debugEnabled)
+                end
+            end
+        else
+            if debugEnabled then
+                DebugMessage("HealerTracker not enabled or not loaded", debugEnabled)
             end
         end
         
@@ -278,7 +292,8 @@ local function OnEvent()
         if HealerTracker and HealerTracker.IsEnabled() and HealerTracker.IsGroupModeEnabled() then
             local healData = HealerTracker.ParseGroupCriticalHeal(message)
             if healData then
-                DebugMessage("Group critical heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Caster=" .. tostring(healData.caster), debugEnabled)
+                local critText = healData.isCritical and " (CRITICAL)" or " (regular)"
+                DebugMessage("Group heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Caster=" .. tostring(healData.caster) .. critText, debugEnabled)
                 
                 -- Update group heal record
                 local groupHealResult = HealerTracker.UpdateGroupRecord(healData)
@@ -287,11 +302,24 @@ local function OnEvent()
                 if groupHealResult.updated then
                     CriTrackDB.healerData = HealerTracker.GetData()
                     
+                    if debugEnabled then
+                        DebugMessage("Group healer data saved. New leader: " .. tostring(groupHealResult.isNewLeader), debugEnabled)
+                    end
+                    
                     -- Announce group heal record
                     if groupHealResult.isNewLeader then
-                        SendChatMessage("New group heal record: " .. healData.amount .. " (" .. healData.spell .. ") by " .. healData.caster .. " on " .. healData.target .. "!", announcementChannel)
+                        local critAnnounce = healData.isCritical and "New group crit heal record" or "New group heal record"
+                        SendChatMessage(critAnnounce .. ": " .. healData.amount .. " (" .. healData.spell .. ") by " .. healData.caster .. " on " .. healData.target .. "!", announcementChannel)
                     end
                 end
+            else
+                if debugEnabled then
+                    DebugMessage("No group heal data parsed from message: " .. tostring(message), debugEnabled)
+                end
+            end
+        else
+            if debugEnabled then
+                DebugMessage("Group healing not enabled or HealerTracker not loaded", debugEnabled)
             end
         end
     elseif event == "CHAT_MSG_COMBAT_PARTY_HITS" or event == "CHAT_MSG_SPELL_PARTY_DAMAGE" or 
@@ -681,6 +709,7 @@ SlashCmdList["CRITHELP"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestparse <message>|r - Test combat message parsing")
     DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestparse Fred's Arcane Explosion crits Kobold for 245 damage|r")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestall|r - Run comprehensive parsing tests")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestheal|r - Run healing message parsing tests")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestparse <message>|r - Test parsing of combat messages")
     DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestparse 'Gandalf's Fireball crits Orc for 456 damage'|r")
     DEFAULT_CHAT_FRAME:AddMessage(" ")
@@ -1077,6 +1106,64 @@ SlashCmdList["CRITTESTFRED"] = function(msg)
     end
     
     DEFAULT_CHAT_FRAME:AddMessage("=======================================")
+end
+
+-- Test command specifically for healing message parsing
+SLASH_CRITTESTHEAL1 = "/crittestheal"
+SlashCmdList["CRITTESTHEAL"] = function(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("=== Testing Healing Message Parsing ===")
+    
+    -- Test various WoW 1.12 healing message formats
+    local healingMessages = {
+        -- Self healing messages
+        "Your Heal heals Alice for 234.",
+        "Your Greater Heal heals Bob for 456.", 
+        "Your Flash Heal heals Charlie for 123.",
+        "Your Heal critically heals Alice for 468.",
+        "Your Greater Heal critically heals Bob for 912.",
+        "Your Flash Heal critically heals Charlie for 246.",
+        
+        -- Alternative formats
+        "Your Heal heals Alice for 234 points.",
+        "Your Greater Heal critically heals Bob for 912 points.",
+        "You heal Alice for 234.",
+        "You critically heal Alice for 468.",
+        
+        -- Group healing messages
+        "Priest's Heal heals Alice for 234.",
+        "Paladin's Greater Heal heals Bob for 456.",
+        "Druid's Heal critically heals Charlie for 468.",
+        "Shaman's Lesser Heal critically heals David for 234."
+    }
+    
+    DEFAULT_CHAT_FRAME:AddMessage("Testing " .. table.getn(healingMessages) .. " healing message formats:")
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    
+    for i = 1, table.getn(healingMessages) do
+        local testMsg = healingMessages[i]
+        DEFAULT_CHAT_FRAME:AddMessage("Test " .. i .. ": " .. testMsg)
+        
+        if HealerTracker then
+            -- Test self healing
+            local selfResult = HealerTracker.ParseCriticalHeal(testMsg)
+            if selfResult then
+                DEFAULT_CHAT_FRAME:AddMessage("  ✓ Self Heal: " .. selfResult.amount .. " (" .. selfResult.spell .. " on " .. selfResult.target .. ")")
+            else
+                -- Test group healing
+                local groupResult = HealerTracker.ParseGroupCriticalHeal(testMsg)
+                if groupResult then
+                    DEFAULT_CHAT_FRAME:AddMessage("  ✓ Group Heal: " .. groupResult.caster .. " - " .. groupResult.amount .. " (" .. groupResult.spell .. " on " .. groupResult.target .. ")")
+                else
+                    DEFAULT_CHAT_FRAME:AddMessage("  ✗ Failed to parse")
+                end
+            end
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("  ✗ HealerTracker not loaded")
+        end
+        DEFAULT_CHAT_FRAME:AddMessage(" ")
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=== Test Complete ===")
 end
 
 DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Addon loaded for 1.12 Vanilla!")

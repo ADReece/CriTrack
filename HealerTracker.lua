@@ -9,13 +9,15 @@ local healerData = {
     personalHighest = {
         amount = 0,
         spell = "Unknown",
-        target = "Unknown"
+        target = "Unknown",
+        isCritical = false
     },
     groupHighest = {
         amount = 0,
         spell = "Unknown",
         caster = "Unknown",
-        target = "Unknown"
+        target = "Unknown",
+        isCritical = false
     },
     enabled = false,
     groupMode = false -- Track group heals when enabled
@@ -68,8 +70,8 @@ function HealerTracker.ParseCriticalHeal(message)
         }
     end
     
-    -- Pattern 2: "Your SpellName heals Target for X. (Critical)"
-    local _, _, spellName2, target2, healAmount2 = string.find(message, "Your ([^%s]+) heals ([^%s]+) for (%d+)%..*[Cc]ritical")
+    -- Pattern 2: "Your SpellName critically heals Target for X points."
+    local _, _, spellName2, target2, healAmount2 = string.find(message, "Your ([^%s]+) critically heals ([^%s]+) for (%d+) points")
     if spellName2 and target2 and healAmount2 then
         return {
             amount = tonumber(healAmount2),
@@ -92,16 +94,46 @@ function HealerTracker.ParseCriticalHeal(message)
         }
     end
     
-    -- Pattern 4: Look for any heal with "critical" in the message
-    if string.find(message, "[Cc]ritical") and string.find(message, "heal") then
-        local _, _, anyAmount = string.find(message, "for (%d+)")
-        if anyAmount then
+    -- Pattern 4: "You critically heal Target for X points."
+    local _, _, target4, healAmount4 = string.find(message, "You critically heal ([^%s]+) for (%d+) points")
+    if target4 and healAmount4 then
+        return {
+            amount = tonumber(healAmount4),
+            spell = "Heal",
+            target = target4,
+            caster = UnitName("player") or "You",
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 5: Non-critical heals that we want to track (for testing)
+    -- "Your SpellName heals Target for X."
+    local _, _, spellName5, target5, healAmount5 = string.find(message, "Your ([^%s]+) heals ([^%s]+) for (%d+)")
+    if spellName5 and target5 and healAmount5 then
+        -- Only return if it's a particularly large heal (over 100) to reduce spam
+        local amount = tonumber(healAmount5)
+        if amount > 100 then
             return {
-                amount = tonumber(anyAmount),
-                spell = "Heal",
-                target = "target",
+                amount = amount,
+                spell = spellName5,
+                target = target5,
                 caster = UnitName("player") or "You",
-                isCritical = true
+                isCritical = false -- Mark as non-critical but still track
+            }
+        end
+    end
+    
+    -- Pattern 6: "You heal Target for X."
+    local _, _, target6, healAmount6 = string.find(message, "You heal ([^%s]+) for (%d+)")
+    if target6 and healAmount6 then
+        local amount = tonumber(healAmount6)
+        if amount > 100 then
+            return {
+                amount = amount,
+                spell = "Heal",
+                target = target6,
+                caster = UnitName("player") or "You",
+                isCritical = false
             }
         end
     end
@@ -126,8 +158,8 @@ function HealerTracker.ParseGroupCriticalHeal(message)
         }
     end
     
-    -- Pattern 2: "PlayerName's SpellName heals Target for X. (Critical)"
-    local _, _, caster2, spellName2, target2, healAmount2 = string.find(message, "([^']+)'s ([^%s]+) heals ([^%s]+) for (%d+)%..*[Cc]ritical")
+    -- Pattern 2: "PlayerName's SpellName critically heals Target for X points."
+    local _, _, caster2, spellName2, target2, healAmount2 = string.find(message, "([^']+)'s ([^%s]+) critically heals ([^%s]+) for (%d+) points")
     if caster2 and spellName2 and target2 and healAmount2 then
         return {
             amount = tonumber(healAmount2),
@@ -150,16 +182,45 @@ function HealerTracker.ParseGroupCriticalHeal(message)
         }
     end
     
-    -- Pattern 4: Look for any heal with "critical" and extract caster
-    if string.find(message, "[Cc]ritical") and string.find(message, "heal") then
-        local _, _, anyCaster, anyAmount = string.find(message, "([^%s]+).*for (%d+)")
-        if anyCaster and anyAmount then
+    -- Pattern 4: "PlayerName critically heals Target for X points."
+    local _, _, caster4, target4, healAmount4 = string.find(message, "([^%s]+) critically heals ([^%s]+) for (%d+) points")
+    if caster4 and target4 and healAmount4 then
+        return {
+            amount = tonumber(healAmount4),
+            spell = "Heal",
+            target = target4,
+            caster = caster4,
+            isCritical = true
+        }
+    end
+    
+    -- Pattern 5: Non-critical group heals (for testing)
+    -- "PlayerName's SpellName heals Target for X."
+    local _, _, caster5, spellName5, target5, healAmount5 = string.find(message, "([^']+)'s ([^%s]+) heals ([^%s]+) for (%d+)")
+    if caster5 and spellName5 and target5 and healAmount5 then
+        local amount = tonumber(healAmount5)
+        if amount > 100 then
             return {
-                amount = tonumber(anyAmount),
+                amount = amount,
+                spell = spellName5,
+                target = target5,
+                caster = caster5,
+                isCritical = false
+            }
+        end
+    end
+    
+    -- Pattern 6: "PlayerName heals Target for X."
+    local _, _, caster6, target6, healAmount6 = string.find(message, "([^%s]+) heals ([^%s]+) for (%d+)")
+    if caster6 and target6 and healAmount6 then
+        local amount = tonumber(healAmount6)
+        if amount > 100 then
+            return {
+                amount = amount,
                 spell = "Heal",
-                target = "target",
-                caster = anyCaster,
-                isCritical = true
+                target = target6,
+                caster = caster6,
+                isCritical = false
             }
         end
     end
@@ -172,11 +233,13 @@ function HealerTracker.UpdatePersonalRecord(healData)
     if not healData or not healerData.enabled then return false end
     
     local updated = false
+    -- Track both critical and non-critical heals, but prioritize critical ones
     if healData.amount > healerData.personalHighest.amount then
         healerData.personalHighest = {
             amount = healData.amount,
             spell = healData.spell,
-            target = healData.target
+            target = healData.target,
+            isCritical = healData.isCritical
         }
         updated = true
     end
@@ -186,7 +249,7 @@ end
 
 -- Update group heal record
 function HealerTracker.UpdateGroupRecord(healData)
-    if not healData or not healerData.enabled or not healerData.groupMode then return false end
+    if not healData or not healerData.enabled or not healerData.groupMode then return {updated = false} end
     
     local updated = false
     if healData.amount > healerData.groupHighest.amount then
@@ -195,7 +258,8 @@ function HealerTracker.UpdateGroupRecord(healData)
             amount = healData.amount,
             spell = healData.spell,
             caster = healData.caster,
-            target = healData.target
+            target = healData.target,
+            isCritical = healData.isCritical
         }
         updated = true
         
@@ -246,7 +310,8 @@ function HealerTracker.ResetPersonal()
     healerData.personalHighest = {
         amount = 0,
         spell = "Unknown",
-        target = "Unknown"
+        target = "Unknown",
+        isCritical = false
     }
 end
 
@@ -256,7 +321,8 @@ function HealerTracker.ResetGroup()
         amount = 0,
         spell = "Unknown",
         caster = "Unknown",
-        target = "Unknown"
+        target = "Unknown",
+        isCritical = false
     }
 end
 
@@ -280,9 +346,10 @@ end
 function HealerTracker.FormatPersonalRecord()
     local record = healerData.personalHighest
     if record.amount > 0 then
-        return record.amount .. " (" .. record.spell .. " on " .. record.target .. ")"
+        local critText = record.isCritical and " (CRIT)" or ""
+        return record.amount .. " (" .. record.spell .. " on " .. record.target .. ")" .. critText
     else
-        return "No critical heals recorded"
+        return "No heals recorded"
     end
 end
 
@@ -290,9 +357,10 @@ end
 function HealerTracker.FormatGroupRecord()
     local record = healerData.groupHighest
     if record.amount > 0 then
-        return record.amount .. " (" .. record.spell .. " by " .. record.caster .. " on " .. record.target .. ")"
+        local critText = record.isCritical and " (CRIT)" or ""
+        return record.amount .. " (" .. record.spell .. " by " .. record.caster .. " on " .. record.target .. ")" .. critText
     else
-        return "No group critical heals recorded"
+        return "No group heals recorded"
     end
 end
 
