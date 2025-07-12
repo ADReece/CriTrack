@@ -20,6 +20,23 @@ local DebugMessage
 
 -- Initialize modules when addon loads
 local function InitializeModules()
+    -- Try to force load modules if they're not available
+    if not Utils then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Utils module missing!")
+    end
+    
+    if not CombatLogParser then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: CombatLogParser module missing!")
+    end
+    
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: CompetitionManager module missing!")
+    end
+    
+    if not HealerTracker then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: HealerTracker module missing!")
+    end
+    
     if Utils and Utils.CreateDebugger then
         DebugMessage = Utils.CreateDebugger("CriTrack")
     else
@@ -31,12 +48,14 @@ local function InitializeModules()
         end
     end
     
-    -- Debug module loading
-    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Initializing modules...")
-    DEFAULT_CHAT_FRAME:AddMessage("  Utils: " .. tostring(Utils ~= nil))
-    DEFAULT_CHAT_FRAME:AddMessage("  CombatLogParser: " .. tostring(CombatLogParser ~= nil))
-    DEFAULT_CHAT_FRAME:AddMessage("  CompetitionManager: " .. tostring(CompetitionManager ~= nil))
-    DEFAULT_CHAT_FRAME:AddMessage("  HealerTracker: " .. tostring(HealerTracker ~= nil))
+    -- Count loaded modules
+    local moduleCount = 0
+    if Utils then moduleCount = moduleCount + 1 end
+    if CombatLogParser then moduleCount = moduleCount + 1 end
+    if CompetitionManager then moduleCount = moduleCount + 1 end
+    if HealerTracker then moduleCount = moduleCount + 1 end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: " .. moduleCount .. " out of 4 modules loaded")
     
     -- Set loading state
     modulesLoaded = true

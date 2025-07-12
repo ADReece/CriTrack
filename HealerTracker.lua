@@ -1,7 +1,8 @@
 -- HealerTracker.lua - Critical heal tracking module for WoW 1.12
 -- Compatible with original 2006 WoW API and Lua 5.0
 
-local HealerTracker = {}
+-- Make HealerTracker global for WoW 1.12 compatibility
+HealerTracker = {}
 
 -- Internal data structure
 local healerData = {
@@ -256,4 +257,4 @@ function HealerTracker.FormatGroupRecord()
     end
 end
 
-return HealerTracker
+-- HealerTracker module is now globally available

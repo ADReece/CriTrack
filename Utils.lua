@@ -1,7 +1,8 @@
 -- Utils.lua - Utility functions for CriTrack
 -- Compatible with WoW 1.12 and Lua 5.0
 
-local Utils = {}
+-- Make Utils global for WoW 1.12 compatibility
+Utils = {}
 
 -- Simple channel validation for 1.12
 function Utils.GetValidChannel(input)
@@ -139,4 +140,4 @@ function Utils.GetPlayerName()
     return playerName or "Unknown Player"
 end
 
-return Utils
+-- Utils module is now globally available

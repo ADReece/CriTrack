@@ -1,7 +1,8 @@
 -- CombatLogParser.lua - Combat log parsing utilities for WoW 1.12
 -- Compatible with original 2006 WoW API and Lua 5.0
 
-local CombatLogParser = {}
+-- Make CombatLogParser global for WoW 1.12 compatibility
+CombatLogParser = {}
 
 -- Parse combat log messages for critical hits (1.12 compatible)
 function CombatLogParser.ParseCriticalHit(message)
@@ -118,4 +119,4 @@ function CombatLogParser.ExtractSpellName(message)
     return nil
 end
 
-return CombatLogParser
+-- CombatLogParser module is now globally available

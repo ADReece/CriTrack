@@ -1,7 +1,8 @@
 -- CompetitionManager.lua - Competition and leaderboard management for CriTrack
 -- Compatible with WoW 1.12 and Lua 5.0
 
-local CompetitionManager = {}
+-- Make CompetitionManager global for WoW 1.12 compatibility
+CompetitionManager = {}
 
 -- Initialize competition data
 function CompetitionManager.Initialize(savedData)
@@ -138,4 +139,4 @@ function CompetitionManager.GetData()
     return CompetitionManager.competitionData
 end
 
-return CompetitionManager
+-- CompetitionManager module is now globally available
