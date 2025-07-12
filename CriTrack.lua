@@ -148,28 +148,36 @@ local function GetSpellNameFromDamageType(damageType)
         return "Melee Attack"
     end
     
-    local lower = string.lower(damageType)
+    local upper = string.upper(damageType)
+    
+    -- Skip heals entirely
+    if upper == "HEAL" then
+        return nil
+    end
     
     -- Map damage types to more readable names
-    if lower == "wound" then
+    if upper == "WOUND" then
         return "Melee Attack"
-    elseif lower == "damage" then
-        return "Spell Damage"
-    elseif lower == "fire" then
-        return "Fire Spell"
-    elseif lower == "frost" then
-        return "Frost Spell"
-    elseif lower == "nature" then
-        return "Nature Spell"
-    elseif lower == "shadow" then
-        return "Shadow Spell"
-    elseif lower == "arcane" then
-        return "Arcane Spell"
-    elseif lower == "holy" then
-        return "Holy Spell"
+    elseif upper == "DAMAGE" then
+        return "Ability"
+    elseif upper == "FIRE" then
+        return "Fire Damage"
+    elseif upper == "FROST" then
+        return "Frost Damage"
+    elseif upper == "NATURE" then
+        return "Nature Damage"
+    elseif upper == "SHADOW" then
+        return "Shadow Damage"
+    elseif upper == "ARCANE" then
+        return "Arcane Damage"
+    elseif upper == "HOLY" then
+        return "Holy Damage"
     else
         -- If it's not a recognized damage type, it might be a spell name
-        return damageType
+        -- Capitalize first letter for better display
+        local firstLetter = string.sub(damageType, 1, 1)
+        local rest = string.sub(damageType, 2)
+        return string.upper(firstLetter) .. string.lower(rest)
     end
 end
 
@@ -220,7 +228,20 @@ local function OnEvent()
         -- arg1 = target unit, arg2 = damage type, arg3 = "CRITICAL" for crits, arg4 = damage amount
         if arg3 == "CRITICAL" then
             local critAmount = tonumber(arg4) -- arg4=damage amount
-            local spellName = GetSpellNameFromDamageType(arg2) -- Convert damage type to readable name
+            local damageType = arg2 or "WOUND"
+            
+            -- Skip healing crits - we only want damage crits
+            if string.upper(damageType) == "HEAL" then
+                DebugMessage("Skipping heal crit: " .. tostring(critAmount))
+                return
+            end
+            
+            local spellName = GetSpellNameFromDamageType(damageType) -- Convert damage type to readable name
+            if not spellName then
+                DebugMessage("Skipping unknown damage type: " .. tostring(damageType))
+                return
+            end
+            
             local playerName = UnitName("player") -- Always the player since UNIT_COMBAT fires for your hits
             
             DebugMessage("Critical hit detected! Amount=" .. tostring(critAmount) .. ", Type=" .. tostring(spellName) .. ", Target=" .. tostring(arg1))
@@ -244,14 +265,17 @@ local function OnEvent()
             
             -- Announce based on mode
             if personalRecord then
-                if competitionMode and competitionResult.isNewLeader then
+                -- Always announce personal records
+                if competitionMode and competitionResult.updated and competitionResult.isNewLeader then
                     SendChatMessage("New group crit record: " .. critAmount .. " (" .. spellName .. ") by " .. playerName .. "!", announcementChannel)
                 else
                     SendChatMessage("New crit record: " .. critAmount .. " (" .. spellName .. ")!", announcementChannel)
                 end
-            elseif competitionMode and competitionResult.updated and competitionResult.leadershipChanged then
-                -- Announce leadership change even if it's not a personal record
-                SendChatMessage("New group crit leader: " .. critAmount .. " (" .. spellName .. ") by " .. playerName .. "!", announcementChannel)
+            else
+                -- Not a personal record, but maybe announce if it's a competition leadership change
+                if competitionMode and competitionResult.updated and competitionResult.leadershipChanged and competitionResult.isNewLeader then
+                    SendChatMessage("New group crit leader: " .. critAmount .. " (" .. spellName .. ") by " .. playerName .. "!", announcementChannel)
+                end
             end
             
             if not personalRecord then
