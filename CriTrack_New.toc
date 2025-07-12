@@ -1,8 +1,0 @@
-## Interface: 11200
-## Title: CriTrack New
-## Notes: Tracks your highest critical hit and announces new records
-## Author: Reece  
-## Version: 1.2
-## SavedVariables: CriTrackDB
-
-CriTrack_New.lua
