@@ -119,4 +119,47 @@ function CombatLogParser.ExtractSpellName(message)
     return nil
 end
 
+-- Parse other players' critical hits from combat log
+function CombatLogParser.ParseOtherPlayerCrit(message)
+    if not message then return nil end
+    
+    -- Look for other players' critical hit patterns
+    if string.find(message, "crit") then
+        -- Pattern: "PlayerName's SpellName crits Target for X damage"
+        local _, _, playerName, spellName, critAmount = string.find(message, "([^']+)'s ([^%s]+) crits [^%s]+ for (%d+)")
+        if playerName and spellName and critAmount then
+            return {
+                playerName = playerName,
+                amount = tonumber(critAmount),
+                spell = spellName,
+                isCritical = true
+            }
+        end
+        
+        -- Pattern: "PlayerName crits Target for X damage" (auto-attack)
+        local _, _, altPlayerName, altAmount = string.find(message, "([^%s]+) crits [^%s]+ for (%d+)")
+        if altPlayerName and altAmount then
+            return {
+                playerName = altPlayerName,
+                amount = tonumber(altAmount),
+                spell = "Auto Attack",
+                isCritical = true
+            }
+        end
+        
+        -- Pattern: "PlayerName critically hits Target for X damage"
+        local _, _, critPlayerName, critAmount2 = string.find(message, "([^%s]+) critically hits [^%s]+ for (%d+)")
+        if critPlayerName and critAmount2 then
+            return {
+                playerName = critPlayerName,
+                amount = tonumber(critAmount2),
+                spell = "Attack",
+                isCritical = true
+            }
+        end
+    end
+    
+    return nil
+end
+
 -- CombatLogParser module is now globally available

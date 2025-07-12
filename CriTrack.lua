@@ -266,6 +266,39 @@ local function OnEvent()
                 end
             end
         end
+    elseif event == "CHAT_MSG_COMBAT_PARTY_HITS" or event == "CHAT_MSG_SPELL_PARTY_DAMAGE" or 
+           event == "CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS" or event == "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" then
+        -- Parse other players' critical hits for competition mode
+        local message = arg1
+        
+        if debugEnabled then
+            DebugMessage("Other player combat message (" .. event .. "): " .. tostring(message), debugEnabled)
+        end
+        
+        -- Only process if competition mode is enabled
+        if CompetitionManager and CompetitionManager.IsEnabled() then
+            local otherCritData = nil
+            if CombatLogParser then
+                otherCritData = CombatLogParser.ParseOtherPlayerCrit(message)
+            end
+            
+            if otherCritData then
+                DebugMessage("Other player crit parsed! Player=" .. tostring(otherCritData.playerName) .. ", Amount=" .. tostring(otherCritData.amount) .. ", Spell=" .. tostring(otherCritData.spell), debugEnabled)
+                
+                -- Update competition leaderboard
+                local competitionResult = CompetitionManager.UpdateLeaderboard(otherCritData.playerName, otherCritData.amount, otherCritData.spell)
+                
+                -- Save competition data
+                if competitionResult.updated then
+                    CriTrackDB.competitionData = CompetitionManager.GetData()
+                    
+                    -- Announce if there's a leadership change
+                    if competitionResult.isNewLeader then
+                        SendChatMessage("New group crit leader: " .. otherCritData.amount .. " (" .. otherCritData.spell .. ") by " .. otherCritData.playerName .. "!", announcementChannel)
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -276,6 +309,10 @@ CriTrack:RegisterEvent("CHAT_MSG_COMBAT_SELF_HITS")
 CriTrack:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 CriTrack:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
 CriTrack:RegisterEvent("CHAT_MSG_COMBAT_FRIENDLY_BUFF")
+CriTrack:RegisterEvent("CHAT_MSG_COMBAT_PARTY_HITS")
+CriTrack:RegisterEvent("CHAT_MSG_SPELL_PARTY_DAMAGE")
+CriTrack:RegisterEvent("CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS")
+CriTrack:RegisterEvent("CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE")
 
 -- Slash commands (1.12 compatible)
 SLASH_CRITCHANNEL1 = "/critchannel"
@@ -347,6 +384,9 @@ SlashCmdList["CRITDEBUG"] = function(msg)
         DEFAULT_CHAT_FRAME:AddMessage("Competition Mode: " .. tostring(stats.enabled))
         if stats.enabled then
             DEFAULT_CHAT_FRAME:AddMessage("Competition Entries: " .. stats.participantCount)
+            DEFAULT_CHAT_FRAME:AddMessage("Auto-detecting other players' crits: YES")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("Auto-detecting other players' crits: NO (enable competition mode)")
         end
         DEFAULT_CHAT_FRAME:AddMessage("Modules Loaded:")
         DEFAULT_CHAT_FRAME:AddMessage("  Utils: " .. tostring(Utils ~= nil))
@@ -375,7 +415,7 @@ SlashCmdList["CRITDEBUG"] = function(msg)
             DEFAULT_CHAT_FRAME:AddMessage("Saved Crit: " .. tostring(CriTrackDB.highestCrit or 0))
             DEFAULT_CHAT_FRAME:AddMessage("Saved Spell: " .. tostring(CriTrackDB.highestCritSpell or "Unknown"))
         end
-        DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, CHAT_MSG_COMBAT_SELF_HITS, CHAT_MSG_SPELL_SELF_DAMAGE, CHAT_MSG_SPELL_SELF_BUFF, CHAT_MSG_COMBAT_FRIENDLY_BUFF")
+        DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, CHAT_MSG_COMBAT_SELF_HITS, CHAT_MSG_SPELL_SELF_DAMAGE, CHAT_MSG_SPELL_SELF_BUFF, CHAT_MSG_COMBAT_FRIENDLY_BUFF, CHAT_MSG_COMBAT_PARTY_HITS, CHAT_MSG_SPELL_PARTY_DAMAGE, CHAT_MSG_COMBAT_FRIENDLYPLAYER_HITS, CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE")
         DEFAULT_CHAT_FRAME:AddMessage("==========================")
     elseif msg == "on" then
         debugEnabled = true
@@ -462,6 +502,70 @@ SlashCmdList["CRITHEALTEST"] = function(msg)
     end
 end
 
+-- Test command for other player's crit parsing
+SLASH_CRITTESTOTHER1 = "/crittestother"
+SlashCmdList["CRITTESTOTHER"] = function(msg)
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition module not loaded!")
+        return
+    end
+    
+    if not CompetitionManager.IsEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Enable competition mode first with /critcomp on")
+        return
+    end
+    
+    -- Parse test message format: PlayerName Amount [SpellName]
+    local words = {}
+    local start = 1
+    while start <= string.len(msg) do
+        local wordStart, wordEnd = string.find(msg, "%S+", start)
+        if wordStart then
+            table.insert(words, string.sub(msg, wordStart, wordEnd))
+            start = wordEnd + 1
+        else
+            break
+        end
+    end
+    
+    if table.getn(words) < 2 then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Usage - /crittestother PlayerName Amount [SpellName]")
+        DEFAULT_CHAT_FRAME:AddMessage("Example: /crittestother Gandalf 450 Fireball")
+        return
+    end
+    
+    local testPlayer = words[1]
+    local testAmount = tonumber(words[2])
+    local testSpell = words[3] or "Test Spell"
+    
+    if not testAmount or testAmount <= 0 then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Invalid amount. Must be a positive number.")
+        return
+    end
+    
+    -- Simulate other player's crit
+    local otherCritData = {
+        playerName = testPlayer,
+        amount = testAmount,
+        spell = testSpell,
+        isCritical = true
+    }
+    
+    local competitionResult = CompetitionManager.UpdateLeaderboard(otherCritData.playerName, otherCritData.amount, otherCritData.spell)
+    
+    if competitionResult.updated then
+        CriTrackDB.competitionData = CompetitionManager.GetData()
+        
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test - " .. testPlayer .. " crit for " .. testAmount .. " (" .. testSpell .. ")")
+        
+        if competitionResult.isNewLeader then
+            SendChatMessage("New group crit leader: " .. testAmount .. " (" .. testSpell .. ") by " .. testPlayer .. "!", announcementChannel)
+        end
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test crit was not higher than " .. testPlayer .. "'s current record")
+    end
+end
+
 -- Help command to show all available commands
 SLASH_CRITHELP1 = "/crithelp"
 SlashCmdList["CRITHELP"] = function(msg)
@@ -497,6 +601,8 @@ SlashCmdList["CRITHELP"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critdebug player/party|r - Set debug scope")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittest <amount>|r - Set test crit for debugging")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crithealtest <amount>|r - Set test heal for debugging")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestother <player> <amount> [spell]|r - Test other player crit detection")
+    DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestother Gandalf 450 Fireball|r")
     DEFAULT_CHAT_FRAME:AddMessage(" ")
     DEFAULT_CHAT_FRAME:AddMessage("|cffccccccFor detailed help on any command, try the command without arguments.|r")
     DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00==================|r")
@@ -597,7 +703,7 @@ SlashCmdList["CRITCOMPETITION"] = function(msg)
     elseif msg == "on" or msg == "enable" then
         CompetitionManager.SetMode(true)
         CriTrackDB.competitionMode = true
-        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition mode enabled! Group crit tracking active.")
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition mode enabled! Now auto-detecting party/group crits.")
     elseif msg == "off" or msg == "disable" then
         CompetitionManager.SetMode(false)
         CriTrackDB.competitionMode = false
