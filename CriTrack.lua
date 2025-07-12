@@ -1,6 +1,9 @@
+
 DEFAULT_CHAT_FRAME:AddMessage("CriTrack is being loaded...")
 
+
 local CriTrack = CreateFrame("Frame")
+
 
 CriTrackDB = CriTrackDB or {}
 local highestCrit = 0
@@ -32,9 +35,10 @@ SlashCmdList["CRITCHANNEL"] = function(msg)
     end
 end
 
+
 -- Event handler
 CriTrack:SetScript("OnEvent", function(self, event, ...)
-    if event == "VARIABLES_LOADED" then
+    if event == "PLAYER_LOGIN" then
         highestCrit = CriTrackDB.highestCrit or 0
         announcementChannel = CriTrackDB.announcementChannel or "SAY"
         print("|cff33ff99CriTrack loaded!|r Current high score: " .. highestCrit .. ". Announcing in: " .. announcementChannel)
@@ -51,6 +55,7 @@ CriTrack:SetScript("OnEvent", function(self, event, ...)
     end
 end)
 
+
 -- Register events
-CriTrack:RegisterEvent("VARIABLES_LOADED")
+CriTrack:RegisterEvent("PLAYER_LOGIN")
 CriTrack:RegisterEvent("UNIT_COMBAT")
