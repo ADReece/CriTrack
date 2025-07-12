@@ -220,8 +220,9 @@ local function IsLikelySpellDamage(damageType, amount)
             return true, recentSpell
         end
         
-        -- High damage amounts are more likely to be spells (rough heuristic)
-        if amount and amount > 200 then
+        -- For mages, high damage amounts are very likely to be spells
+        -- Auto-attacks for mages are typically quite low
+        if amount and amount > 100 then  -- Lowered threshold for mages
             return true, "Spell"
         end
         
@@ -267,19 +268,35 @@ local function OnEvent()
         
         DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")" .. debugText .. competitionText)
         
-    elseif event == "SPELLCAST_START" then
-        -- Track when player starts casting a spell
+    elseif event == "SPELLCAST_SENT" then
+        -- Track when player starts casting a spell (1.12 compatible)
         if debugEnabled then
-            DebugMessage("SPELLCAST_START: " .. tostring(arg1))
+            DebugMessage("SPELLCAST_SENT: " .. tostring(arg1))
         end
         
-    elseif event == "SPELLCAST_STOP" then
-        -- Track when player finishes casting a spell
+    elseif event == "SPELLCAST_SUCCESS" then
+        -- Track when player successfully casts a spell (1.12 compatible)
         if arg1 and arg1 ~= "" then
             lastSpellCast = arg1
             lastSpellTime = GetTime()
             if debugEnabled then
-                DebugMessage("SPELLCAST_STOP: " .. tostring(arg1) .. " (tracked for next crit)")
+                DebugMessage("SPELLCAST_SUCCESS: " .. tostring(arg1) .. " (tracked for next crit)")
+            end
+        end
+        
+    elseif event == "SPELLCAST_CHANNEL_START" then
+        -- Track channeled spells
+        if debugEnabled then
+            DebugMessage("SPELLCAST_CHANNEL_START: " .. tostring(arg1))
+        end
+        
+    elseif event == "SPELLCAST_CHANNEL_STOP" then
+        -- Track channeled spells completion
+        if arg1 and arg1 ~= "" then
+            lastSpellCast = arg1
+            lastSpellTime = GetTime()
+            if debugEnabled then
+                DebugMessage("SPELLCAST_CHANNEL_STOP: " .. tostring(arg1) .. " (tracked for next crit)")
             end
         end
         
@@ -288,6 +305,13 @@ local function OnEvent()
         if debugEnabled then
             DebugMessage("UNIT_COMBAT triggered")
             DebugMessage("arg1=" .. tostring(arg1) .. ", arg2=" .. tostring(arg2) .. ", arg3=" .. tostring(arg3) .. ", arg4=" .. tostring(arg4) .. ", arg5=" .. tostring(arg5))
+            
+            -- Determine combat direction
+            if arg1 == "player" then
+                DebugMessage("DIRECTION: Something hit YOU (incoming damage)")
+            else
+                DebugMessage("DIRECTION: YOU hit something (outgoing damage)")
+            end
             
             -- Additional debug info
             if arg1 then
@@ -305,9 +329,16 @@ local function OnEvent()
         end
         
         -- 1.12 UNIT_COMBAT event handling - check for critical hits
-        -- In 1.12, UNIT_COMBAT fires when YOU hit something, not when something hits you
-        -- arg1 = target unit, arg2 = damage type, arg3 = "CRITICAL" for crits, arg4 = damage amount
+        -- In 1.12, UNIT_COMBAT fires for ANY combat involving you (incoming AND outgoing)
+        -- We need to distinguish between you hitting something vs something hitting you
+        -- arg1 = unit involved, arg2 = damage type, arg3 = "CRITICAL" for crits, arg4 = damage amount
         if arg3 == "CRITICAL" then
+            -- Check if this is incoming damage (something hit you) vs outgoing (you hit something)
+            -- If arg1 is "player", then something hit YOU - skip this
+            if arg1 == "player" then
+                DebugMessage("Skipping incoming crit damage to player")
+                return
+            end
             local critAmount = tonumber(arg4) -- arg4=damage amount
             local damageType = arg2 or "WOUND"
             
@@ -379,8 +410,10 @@ end
 CriTrack:SetScript("OnEvent", OnEvent)
 CriTrack:RegisterEvent("PLAYER_LOGIN")
 CriTrack:RegisterEvent("UNIT_COMBAT")
-CriTrack:RegisterEvent("SPELLCAST_START")
-CriTrack:RegisterEvent("SPELLCAST_STOP")
+CriTrack:RegisterEvent("SPELLCAST_CHANNEL_START")
+CriTrack:RegisterEvent("SPELLCAST_CHANNEL_STOP")
+CriTrack:RegisterEvent("SPELLCAST_SENT")
+CriTrack:RegisterEvent("SPELLCAST_SUCCESS")
 
 -- Slash commands (1.12 compatible)
 SLASH_CRITCHANNEL1 = "/critchannel"
