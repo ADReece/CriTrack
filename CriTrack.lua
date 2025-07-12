@@ -56,6 +56,13 @@ local function OnEvent()
             CompetitionManager.SetMode(CriTrackDB.competitionMode or false)
         end
         
+        -- Initialize healer tracker
+        if HealerTracker then
+            HealerTracker.Initialize(CriTrackDB.healerData)
+            HealerTracker.SetEnabled(CriTrackDB.healerEnabled or false)
+            HealerTracker.SetGroupMode(CriTrackDB.healerGroupMode or false)
+        end
+        
         local spellText = ""
         if highestCritSpell ~= "Unknown" then
             spellText = " (" .. highestCritSpell .. ")"
@@ -79,7 +86,16 @@ local function OnEvent()
             end
         end
         
-        DEFAULT_CHAT_FRAME:AddMessage("CriTrack v2.0 loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")" .. debugText .. competitionText)
+        local healerText = ""
+        if HealerTracker and HealerTracker.IsEnabled() then
+            if Utils and Utils.FormatMessage then
+                healerText = " " .. Utils.FormatMessage("[Healer Mode]", "cyan")
+            else
+                healerText = " |cff00ffff[Healer Mode]|r"
+            end
+        end
+        
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack v2.0 loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")" .. debugText .. competitionText .. healerText)
         
     elseif event == "CHAT_MSG_COMBAT_SELF_HITS" or event == "CHAT_MSG_SPELL_SELF_DAMAGE" then
         -- Parse combat log messages for critical hits
@@ -144,6 +160,74 @@ local function OnEvent()
                 DebugMessage("Crit not higher than current personal record (" .. highestCrit .. ")", debugEnabled)
             end
         end
+        
+    elseif event == "CHAT_MSG_SPELL_SELF_BUFF" then
+        -- Parse healing messages for critical heals
+        local message = arg1
+        
+        if debugEnabled then
+            DebugMessage("Heal message (" .. event .. "): " .. tostring(message), debugEnabled)
+        end
+        
+        -- Check for critical heals
+        if HealerTracker and HealerTracker.IsEnabled() then
+            local healData = HealerTracker.ParseCriticalHeal(message)
+            if healData then
+                DebugMessage("Critical heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Target=" .. tostring(healData.target), debugEnabled)
+                
+                -- Update personal heal record
+                local personalHealRecord = HealerTracker.UpdatePersonalRecord(healData)
+                
+                -- Update group heal record if group mode is enabled
+                local groupHealResult = {updated = false}
+                if HealerTracker.IsGroupModeEnabled() then
+                    groupHealResult = HealerTracker.UpdateGroupRecord(healData)
+                end
+                
+                -- Save healer data
+                if personalHealRecord or groupHealResult.updated then
+                    CriTrackDB.healerData = HealerTracker.GetData()
+                end
+                
+                -- Announce heal records
+                if personalHealRecord then
+                    if HealerTracker.IsGroupModeEnabled() and groupHealResult.updated and groupHealResult.isNewLeader then
+                        SendChatMessage("New group heal record: " .. healData.amount .. " (" .. healData.spell .. ") by " .. healData.caster .. " on " .. healData.target .. "!", announcementChannel)
+                    else
+                        SendChatMessage("New heal record: " .. healData.amount .. " (" .. healData.spell .. ") on " .. healData.target .. "!", announcementChannel)
+                    end
+                end
+            end
+        end
+        
+    elseif event == "CHAT_MSG_COMBAT_FRIENDLY_BUFF" then
+        -- Parse group member healing for group mode
+        local message = arg1
+        
+        if debugEnabled then
+            DebugMessage("Group heal message (" .. event .. "): " .. tostring(message), debugEnabled)
+        end
+        
+        -- Check for group critical heals
+        if HealerTracker and HealerTracker.IsEnabled() and HealerTracker.IsGroupModeEnabled() then
+            local healData = HealerTracker.ParseGroupCriticalHeal(message)
+            if healData then
+                DebugMessage("Group critical heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Caster=" .. tostring(healData.caster), debugEnabled)
+                
+                -- Update group heal record
+                local groupHealResult = HealerTracker.UpdateGroupRecord(healData)
+                
+                -- Save healer data
+                if groupHealResult.updated then
+                    CriTrackDB.healerData = HealerTracker.GetData()
+                    
+                    -- Announce group heal record
+                    if groupHealResult.isNewLeader then
+                        SendChatMessage("New group heal record: " .. healData.amount .. " (" .. healData.spell .. ") by " .. healData.caster .. " on " .. healData.target .. "!", announcementChannel)
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -152,6 +236,8 @@ CriTrack:SetScript("OnEvent", OnEvent)
 CriTrack:RegisterEvent("PLAYER_LOGIN")
 CriTrack:RegisterEvent("CHAT_MSG_COMBAT_SELF_HITS")
 CriTrack:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+CriTrack:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
+CriTrack:RegisterEvent("CHAT_MSG_COMBAT_FRIENDLY_BUFF")
 
 -- Slash commands (1.12 compatible)
 SLASH_CRITCHANNEL1 = "/critchannel"
@@ -190,6 +276,11 @@ SlashCmdList["CRITDEBUG"] = function(msg)
     if not msg or msg == "" then
         -- Show current debug status
         local stats = CompetitionManager.GetStats()
+        local healerStats = nil
+        if HealerTracker then
+            healerStats = HealerTracker.GetStats()
+        end
+        
         DEFAULT_CHAT_FRAME:AddMessage("=== CriTrack Debug Info ===")
         DEFAULT_CHAT_FRAME:AddMessage("Frame: " .. CriTrack:GetName())
         DEFAULT_CHAT_FRAME:AddMessage("Highest Crit: " .. highestCrit)
@@ -201,13 +292,23 @@ SlashCmdList["CRITDEBUG"] = function(msg)
         if stats.enabled then
             DEFAULT_CHAT_FRAME:AddMessage("Competition Entries: " .. stats.participantCount)
         end
+        if healerStats then
+            DEFAULT_CHAT_FRAME:AddMessage("Healer Mode: " .. tostring(healerStats.enabled))
+            DEFAULT_CHAT_FRAME:AddMessage("Healer Group Mode: " .. tostring(healerStats.groupMode))
+            if healerStats.enabled then
+                DEFAULT_CHAT_FRAME:AddMessage("Personal Heal Record: " .. healerStats.personalRecord.amount .. " (" .. healerStats.personalRecord.spell .. ")")
+                if healerStats.groupMode then
+                    DEFAULT_CHAT_FRAME:AddMessage("Group Heal Record: " .. healerStats.groupRecord.amount .. " (" .. healerStats.groupRecord.spell .. " by " .. healerStats.groupRecord.caster .. ")")
+                end
+            end
+        end
         DEFAULT_CHAT_FRAME:AddMessage("Player Name: " .. Utils.GetPlayerName())
         DEFAULT_CHAT_FRAME:AddMessage("CriTrackDB exists: " .. tostring(CriTrackDB ~= nil))
         if CriTrackDB then
             DEFAULT_CHAT_FRAME:AddMessage("Saved Crit: " .. tostring(CriTrackDB.highestCrit or 0))
             DEFAULT_CHAT_FRAME:AddMessage("Saved Spell: " .. tostring(CriTrackDB.highestCritSpell or "Unknown"))
         end
-        DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, CHAT_MSG_COMBAT_SELF_HITS, CHAT_MSG_SPELL_SELF_DAMAGE")
+        DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, CHAT_MSG_COMBAT_SELF_HITS, CHAT_MSG_SPELL_SELF_DAMAGE, CHAT_MSG_SPELL_SELF_BUFF, CHAT_MSG_COMBAT_FRIENDLY_BUFF")
         DEFAULT_CHAT_FRAME:AddMessage("==========================")
     elseif msg == "on" then
         debugEnabled = true
@@ -251,6 +352,49 @@ SlashCmdList["CRITTEST"] = function(msg)
     end
 end
 
+-- Test command to manually set a heal (for debugging)
+SLASH_CRITHEALTEST1 = "/crithealtest"
+SlashCmdList["CRITHEALTEST"] = function(msg)
+    if not HealerTracker then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Healer module not loaded!")
+        return
+    end
+    
+    if not HealerTracker.IsEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Enable healer tracking first with /critheal on")
+        return
+    end
+    
+    local testAmount = tonumber(msg) or 100
+    local testHealData = {
+        amount = testAmount,
+        spell = "Test Heal",
+        target = "Test Target",
+        caster = UnitName("player") or "You",
+        isCritical = true
+    }
+    
+    local personalRecord = HealerTracker.UpdatePersonalRecord(testHealData)
+    local groupResult = {updated = false}
+    
+    if HealerTracker.IsGroupModeEnabled() then
+        groupResult = HealerTracker.UpdateGroupRecord(testHealData)
+    end
+    
+    if personalRecord or groupResult.updated then
+        CriTrackDB.healerData = HealerTracker.GetData()
+        
+        if personalRecord then
+            SendChatMessage("New heal record: " .. testAmount .. " (Test Heal) on Test Target!", announcementChannel)
+            DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test heal set to " .. testAmount)
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test heal amount must be higher than current record")
+        end
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Test heal amount must be higher than current record")
+    end
+end
+
 -- Help command to show all available commands
 SLASH_CRITHELP1 = "/crithelp"
 SlashCmdList["CRITHELP"] = function(msg)
@@ -274,11 +418,18 @@ SlashCmdList["CRITHELP"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critboard|r - Show leaderboard in chat")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critboard announce|r - Share leaderboard publicly")
     DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Healer Tracking:|r")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critheal|r - Show healer tracking status")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critheal on/off|r - Enable/disable heal tracking")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critheal group/groupoff|r - Enable/disable group heal tracking")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critheal reset|r - Reset all heal records")
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
     DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Debug & Testing:|r")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critdebug|r - Show debug information")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critdebug on/off|r - Enable/disable debug messages")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critdebug player/party|r - Set debug scope")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittest <amount>|r - Set test crit for debugging")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crithealtest <amount>|r - Set test heal for debugging")
     DEFAULT_CHAT_FRAME:AddMessage(" ")
     DEFAULT_CHAT_FRAME:AddMessage("|cffccccccFor detailed help on any command, try the command without arguments.|r")
     DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00==================|r")
@@ -401,6 +552,73 @@ SlashCmdList["CRITLEADERBOARD"] = function(msg)
         end
         DEFAULT_CHAT_FRAME:AddMessage("===========================")
         DEFAULT_CHAT_FRAME:AddMessage("Use '/critboard announce' to share in " .. string.lower(announcementChannel))
+    end
+end
+
+-- Healer tracking commands
+SLASH_CRITHEAL1 = "/critheal"
+SLASH_CRITHEAL2 = "/healer"
+SlashCmdList["CRITHEAL"] = function(msg)
+    if not HealerTracker then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Healer module not loaded!")
+        return
+    end
+    
+    if not msg or msg == "" then
+        -- Show current healer status
+        local stats = HealerTracker.GetStats()
+        DEFAULT_CHAT_FRAME:AddMessage("=== CriTrack Healer Mode ===")
+        DEFAULT_CHAT_FRAME:AddMessage("Status: " .. (stats.enabled and "ENABLED" or "DISABLED"))
+        DEFAULT_CHAT_FRAME:AddMessage("Group Mode: " .. (stats.groupMode and "ENABLED" or "DISABLED"))
+        if stats.enabled then
+            DEFAULT_CHAT_FRAME:AddMessage("Personal Best: " .. HealerTracker.FormatPersonalRecord())
+            if stats.groupMode then
+                DEFAULT_CHAT_FRAME:AddMessage("Group Best: " .. HealerTracker.FormatGroupRecord())
+            end
+        end
+        DEFAULT_CHAT_FRAME:AddMessage("===========================")
+    elseif msg == "on" or msg == "enable" then
+        HealerTracker.SetEnabled(true)
+        CriTrackDB.healerEnabled = true
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Healer tracking enabled!")
+    elseif msg == "off" or msg == "disable" then
+        HealerTracker.SetEnabled(false)
+        CriTrackDB.healerEnabled = false
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Healer tracking disabled.")
+    elseif msg == "group" or msg == "groupon" then
+        if not HealerTracker.IsEnabled() then
+            DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Enable healer tracking first with /critheal on")
+            return
+        end
+        HealerTracker.SetGroupMode(true)
+        CriTrackDB.healerGroupMode = true
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Group healer tracking enabled!")
+    elseif msg == "groupoff" then
+        HealerTracker.SetGroupMode(false)
+        CriTrackDB.healerGroupMode = false
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Group healer tracking disabled.")
+    elseif msg == "reset" then
+        HealerTracker.ResetAll()
+        CriTrackDB.healerData = HealerTracker.GetData()
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: All heal records reset!")
+    elseif msg == "resetpersonal" then
+        HealerTracker.ResetPersonal()
+        CriTrackDB.healerData = HealerTracker.GetData()
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Personal heal record reset!")
+    elseif msg == "resetgroup" then
+        HealerTracker.ResetGroup()
+        CriTrackDB.healerData = HealerTracker.GetData()
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Group heal record reset!")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack Healer Usage:")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal - Show healer status")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal on - Enable healer tracking")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal off - Disable healer tracking")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal group - Enable group heal tracking")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal groupoff - Disable group heal tracking")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal reset - Reset all heal records")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal resetpersonal - Reset personal heal record")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critheal resetgroup - Reset group heal record")
     end
 end
 

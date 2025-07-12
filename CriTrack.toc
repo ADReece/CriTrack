@@ -1,6 +1,6 @@
 ## Interface: 11200
 ## Title: CriTrack
-## Notes: Tracks your highest critical hit and announces new records
+## Notes: Tracks your highest critical hits and heals with competition mode
 ## Author: Reece
 ## Version: 2.0
 ## SavedVariables: CriTrackDB
@@ -8,4 +8,5 @@
 Utils.lua
 CombatLogParser.lua
 CompetitionManager.lua
+HealerTracker.lua
 CriTrack.lua
