@@ -29,7 +29,18 @@ CriTrack is a lightweight addon specifically designed for **Turtle WoW** (1.17.2
 | `/critchannel <channel>` | Set announcement channel (say, party, raid, guild, yell) |
 | `/crithigh` | Display your current highest critical hit and the spell/attack that caused it |
 | `/critreset` | Reset your highest crit record and spell to 0 |
-| `/critdebug` | Show debug information about the addon |
+| `/critdebug [option]` | Debug commands - see debug options below |
+| `/crittest <number>` | Manually set a test crit for debugging |
+
+### Debug Commands
+
+| Command | Description |
+|---------|-------------|
+| `/critdebug` | Show current debug status and addon information |
+| `/critdebug on` | Enable debug messages |
+| `/critdebug off` | Disable debug messages |
+| `/critdebug player` | Debug player combat events only |
+| `/critdebug party` | Debug all party member combat events |
 
 ## Usage Examples
 
@@ -39,6 +50,13 @@ CriTrack is a lightweight addon specifically designed for **Turtle WoW** (1.17.2
 /critchannel guild   # Announce new records in Guild chat
 /crithigh           # Check your current record
 /critreset          # Reset your record to start over
+
+# Debug commands
+/critdebug on       # Enable debug messages
+/critdebug player   # Debug only your combat events
+/critdebug party    # Debug all party members' combat events
+/critdebug off      # Disable debug messages
+/crittest 500       # Set a test crit of 500 for testing
 ```
 
 ## Compatibility
@@ -72,6 +90,7 @@ CriTrack/
 
 ### Version History
 
+- **v1.5** - Added configurable debug system with player/party filtering
 - **v1.4** - Added spell/attack tracking for highest crits
 - **v1.3** - 1.12 Vanilla compatibility update
 - **v1.2** - Enhanced debugging and conflict detection
@@ -99,7 +118,9 @@ Data is stored in `CriTrackDB` with the following structure:
 CriTrackDB = {
     highestCrit = 1250,                    -- Your highest crit damage
     highestCritSpell = "Fireball",         -- The spell/attack that caused it
-    announcementChannel = "SAY"            -- Current announcement channel
+    announcementChannel = "SAY",           -- Current announcement channel
+    debugEnabled = false,                  -- Debug mode on/off
+    debugMode = "player"                   -- Debug scope: "player" or "party"
 }
 ```
 
@@ -112,10 +133,12 @@ CriTrackDB = {
 4. Try the ultra-simple test version first
 
 ### No Critical Hits Detected
-1. Make sure you're dealing damage to enemies
-2. Check that you're actually getting critical hits
-3. Use `/critdebug` to verify event registration
-4. Ensure you're not in a party/raid if testing solo
+1. Enable debug mode with `/critdebug on`
+2. Attack enemies and watch for debug messages
+3. Check if UNIT_COMBAT events are firing
+4. Verify the event parameters match expected values
+5. Try `/crittest 100` to test the recording system
+6. Use `/critdebug player` to focus on your events only
 
 ### Commands Not Working
 1. Verify slash commands are typed correctly

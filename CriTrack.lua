@@ -7,6 +7,10 @@ local highestCrit = 0
 local highestCritSpell = "Unknown"
 local announcementChannel = "SAY"
 
+-- Debug configuration
+local debugEnabled = false
+local debugMode = "player" -- "player" or "party"
+
 -- Simple channel validation for 1.12
 local function GetValidChannel(input)
     if not input then return nil end
@@ -19,6 +23,36 @@ local function GetValidChannel(input)
     if lower == "yell" then return "YELL" end
     
     return nil
+end
+
+-- Debug output function
+local function DebugMessage(msg)
+    if debugEnabled then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffff9900CriTrack DEBUG:|r " .. msg)
+    end
+end
+
+-- Check if unit should be debugged based on debug mode
+local function ShouldDebugUnit(unit)
+    if not debugEnabled then return false end
+    
+    if debugMode == "player" then
+        return unit == "player" or unit == UnitName("player")
+    elseif debugMode == "party" then
+        -- Check if unit is player or party member
+        if unit == "player" or unit == UnitName("player") then
+            return true
+        end
+        -- Check party members
+        for i = 1, 4 do
+            if UnitExists("party" .. i) and unit == UnitName("party" .. i) then
+                return true
+            end
+        end
+        return false
+    end
+    
+    return false
 end
 
 -- Event handler compatible with 1.12
@@ -34,38 +68,49 @@ local function OnEvent()
         highestCrit = CriTrackDB.highestCrit or 0
         highestCritSpell = CriTrackDB.highestCritSpell or "Unknown"
         announcementChannel = CriTrackDB.announcementChannel or "SAY"
+        debugEnabled = CriTrackDB.debugEnabled or false
+        debugMode = CriTrackDB.debugMode or "player"
         
         local spellText = ""
         if highestCritSpell ~= "Unknown" then
             spellText = " (" .. highestCritSpell .. ")"
         end
         
-        DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")")
+        local debugText = ""
+        if debugEnabled then
+            debugText = " |cffff9900[Debug: " .. debugMode .. "]|r"
+        end
+        
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")" .. debugText)
         
     elseif event == "UNIT_COMBAT" then
-        -- Debug: Show all event arguments for 1.12 troubleshooting
-        DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: UNIT_COMBAT triggered")
-        DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: arg1=" .. tostring(arg1) .. ", arg2=" .. tostring(arg2) .. ", arg3=" .. tostring(arg3) .. ", arg4=" .. tostring(arg4) .. ", arg5=" .. tostring(arg5))
+        -- Debug all UNIT_COMBAT events if debug is enabled
+        if debugEnabled then
+            DebugMessage("UNIT_COMBAT triggered")
+            DebugMessage("arg1=" .. tostring(arg1) .. ", arg2=" .. tostring(arg2) .. ", arg3=" .. tostring(arg3) .. ", arg4=" .. tostring(arg4) .. ", arg5=" .. tostring(arg5))
+        end
         
-        -- 1.12 UNIT_COMBAT event handling
-        if arg1 == "player" and arg5 == 1 then -- arg1=unit, arg5=isCrit
-            local critAmount = tonumber(arg3) -- arg3=damage
-            local spellName = arg2 or "Melee Attack" -- arg2=action/spell
+        -- 1.12 UNIT_COMBAT event handling - check for critical hits
+        -- In 1.12, UNIT_COMBAT fires when YOU hit something, not when something hits you
+        -- arg1 = target unit, arg2 = damage type, arg3 = "CRITICAL" for crits, arg4 = damage amount
+        if arg3 == "CRITICAL" then
+            local critAmount = tonumber(arg4) -- arg4=damage amount
+            local spellName = arg2 or "Melee Attack" -- arg2=damage type/spell
             
-            DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: Player crit detected! Amount=" .. tostring(critAmount) .. ", Spell=" .. tostring(spellName))
+            DebugMessage("Critical hit detected! Amount=" .. tostring(critAmount) .. ", Type=" .. tostring(spellName) .. ", Target=" .. tostring(arg1))
             
             if critAmount and critAmount > highestCrit then
                 highestCrit = critAmount
                 highestCritSpell = spellName
                 CriTrackDB.highestCrit = highestCrit
                 CriTrackDB.highestCritSpell = highestCritSpell
-                DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: New record set!")
+                DebugMessage("New record set!")
                 SendChatMessage("New crit record: " .. critAmount .. " (" .. spellName .. ")!", announcementChannel)
             else
-                DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: Crit not higher than current record (" .. highestCrit .. ")")
+                DebugMessage("Crit not higher than current record (" .. highestCrit .. ")")
             end
-        else
-            DEFAULT_CHAT_FRAME:AddMessage("CriTrack DEBUG: Not player crit - arg1=" .. tostring(arg1) .. ", arg5=" .. tostring(arg5))
+        elseif debugEnabled then
+            DebugMessage("Not a critical hit - arg3=" .. tostring(arg3))
         end
     end
 end
@@ -108,19 +153,48 @@ end
 
 -- Debug command for 1.12
 SLASH_CRITDEBUG1 = "/critdebug"
-SlashCmdList["CRITDEBUG"] = function()
-    DEFAULT_CHAT_FRAME:AddMessage("=== CriTrack Debug Info ===")
-    DEFAULT_CHAT_FRAME:AddMessage("Frame: " .. CriTrack:GetName())
-    DEFAULT_CHAT_FRAME:AddMessage("Highest Crit: " .. highestCrit)
-    DEFAULT_CHAT_FRAME:AddMessage("Highest Crit Spell: " .. highestCritSpell)
-    DEFAULT_CHAT_FRAME:AddMessage("Channel: " .. announcementChannel)
-    DEFAULT_CHAT_FRAME:AddMessage("CriTrackDB exists: " .. tostring(CriTrackDB ~= nil))
-    if CriTrackDB then
-        DEFAULT_CHAT_FRAME:AddMessage("Saved Crit: " .. tostring(CriTrackDB.highestCrit or 0))
-        DEFAULT_CHAT_FRAME:AddMessage("Saved Spell: " .. tostring(CriTrackDB.highestCritSpell or "Unknown"))
+SlashCmdList["CRITDEBUG"] = function(msg)
+    if not msg or msg == "" then
+        -- Show current debug status
+        DEFAULT_CHAT_FRAME:AddMessage("=== CriTrack Debug Info ===")
+        DEFAULT_CHAT_FRAME:AddMessage("Frame: " .. CriTrack:GetName())
+        DEFAULT_CHAT_FRAME:AddMessage("Highest Crit: " .. highestCrit)
+        DEFAULT_CHAT_FRAME:AddMessage("Highest Crit Spell: " .. highestCritSpell)
+        DEFAULT_CHAT_FRAME:AddMessage("Channel: " .. announcementChannel)
+        DEFAULT_CHAT_FRAME:AddMessage("Debug Enabled: " .. tostring(debugEnabled))
+        DEFAULT_CHAT_FRAME:AddMessage("Debug Mode: " .. debugMode)
+        DEFAULT_CHAT_FRAME:AddMessage("Player Name: " .. UnitName("player"))
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrackDB exists: " .. tostring(CriTrackDB ~= nil))
+        if CriTrackDB then
+            DEFAULT_CHAT_FRAME:AddMessage("Saved Crit: " .. tostring(CriTrackDB.highestCrit or 0))
+            DEFAULT_CHAT_FRAME:AddMessage("Saved Spell: " .. tostring(CriTrackDB.highestCritSpell or "Unknown"))
+        end
+        DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, UNIT_COMBAT")
+        DEFAULT_CHAT_FRAME:AddMessage("==========================")
+    elseif msg == "on" then
+        debugEnabled = true
+        CriTrackDB.debugEnabled = true
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Debug mode enabled (" .. debugMode .. ")")
+    elseif msg == "off" then
+        debugEnabled = false
+        CriTrackDB.debugEnabled = false
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Debug mode disabled")
+    elseif msg == "player" then
+        debugMode = "player"
+        CriTrackDB.debugMode = "player"
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Debug mode set to player only")
+    elseif msg == "party" then
+        debugMode = "party"
+        CriTrackDB.debugMode = "party"
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Debug mode set to party members")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack Debug Usage:")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critdebug - Show debug info")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critdebug on - Enable debug messages")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critdebug off - Disable debug messages")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critdebug player - Debug player only")
+        DEFAULT_CHAT_FRAME:AddMessage("  /critdebug party - Debug all party members")
     end
-    DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, UNIT_COMBAT")
-    DEFAULT_CHAT_FRAME:AddMessage("==========================")
 end
 
 -- Test command to manually set a crit (for debugging)
