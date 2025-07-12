@@ -9,8 +9,9 @@ CriTrack is a lightweight addon specifically designed for **Turtle WoW** (1.17.2
 ## Features
 
 - 🎯 **Automatic Critical Hit Tracking** - Monitors all your damage for critical hits
+- ⚔️ **Spell/Attack Tracking** - Records which spell or attack achieved your highest crit
 - 📢 **Customizable Announcements** - Choose which chat channel to announce records in
-- 💾 **Persistent Storage** - Your highest crit is saved between game sessions
+- 💾 **Persistent Storage** - Your highest crit and spell are saved between game sessions
 - 🔧 **Simple Commands** - Easy-to-use slash commands for all functions
 - 🐢 **Turtle WoW Compatible** - Built specifically for the 1.12 Vanilla client
 
@@ -26,8 +27,8 @@ CriTrack is a lightweight addon specifically designed for **Turtle WoW** (1.17.2
 | Command | Description |
 |---------|-------------|
 | `/critchannel <channel>` | Set announcement channel (say, party, raid, guild, yell) |
-| `/crithigh` | Display your current highest critical hit |
-| `/critreset` | Reset your highest crit record to 0 |
+| `/crithigh` | Display your current highest critical hit and the spell/attack that caused it |
+| `/critreset` | Reset your highest crit record and spell to 0 |
 | `/critdebug` | Show debug information about the addon |
 
 ## Usage Examples
@@ -52,8 +53,9 @@ CriTrack is a lightweight addon specifically designed for **Turtle WoW** (1.17.2
 CriTrack uses the `UNIT_COMBAT` event available in the 1.12 client to monitor combat damage. When you deal a critical hit that exceeds your current record, it:
 
 1. Updates your highest crit value
-2. Saves the new record to your SavedVariables
-3. Announces the new record in your chosen chat channel
+2. Records the spell or attack that caused the crit
+3. Saves the new record and spell to your SavedVariables
+4. Announces the new record with the spell/attack name in your chosen chat channel
 
 ## File Structure
 
@@ -70,6 +72,7 @@ CriTrack/
 
 ### Version History
 
+- **v1.4** - Added spell/attack tracking for highest crits
 - **v1.3** - 1.12 Vanilla compatibility update
 - **v1.2** - Enhanced debugging and conflict detection
 - **v1.1** - Improved error handling and additional features
@@ -94,8 +97,9 @@ The addon uses the classic 1.12 event system:
 Data is stored in `CriTrackDB` with the following structure:
 ```lua
 CriTrackDB = {
-    highestCrit = 1250,           -- Your highest crit damage
-    announcementChannel = "SAY"   -- Current announcement channel
+    highestCrit = 1250,                    -- Your highest crit damage
+    highestCritSpell = "Fireball",         -- The spell/attack that caused it
+    announcementChannel = "SAY"            -- Current announcement channel
 }
 ```
 

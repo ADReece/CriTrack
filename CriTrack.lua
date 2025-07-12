@@ -4,6 +4,7 @@
 -- Simple variables - no complex namespace needed for 1.12
 local CriTrack = CreateFrame("Frame", "CriTrackFrame")
 local highestCrit = 0
+local highestCritSpell = "Unknown"
 local announcementChannel = "SAY"
 
 -- Simple channel validation for 1.12
@@ -31,18 +32,28 @@ local function OnEvent()
         end
         
         highestCrit = CriTrackDB.highestCrit or 0
+        highestCritSpell = CriTrackDB.highestCritSpell or "Unknown"
         announcementChannel = CriTrackDB.announcementChannel or "SAY"
         
-        DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. " (Channel: " .. announcementChannel .. ")")
+        local spellText = ""
+        if highestCritSpell ~= "Unknown" then
+            spellText = " (" .. highestCritSpell .. ")"
+        end
+        
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack loaded! Current record: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")")
         
     elseif event == "UNIT_COMBAT" then
         -- 1.12 UNIT_COMBAT event handling
         if arg1 == "player" and arg5 == 1 then -- arg1=unit, arg5=isCrit
             local critAmount = tonumber(arg3) -- arg3=damage
+            local spellName = arg2 or "Melee Attack" -- arg2=action/spell
+            
             if critAmount and critAmount > highestCrit then
                 highestCrit = critAmount
+                highestCritSpell = spellName
                 CriTrackDB.highestCrit = highestCrit
-                SendChatMessage("New crit record: " .. critAmount .. "!", announcementChannel)
+                CriTrackDB.highestCritSpell = highestCritSpell
+                SendChatMessage("New crit record: " .. critAmount .. " (" .. spellName .. ")!", announcementChannel)
             end
         end
     end
@@ -68,13 +79,19 @@ end
 
 SLASH_CRITHIGH1 = "/crithigh"
 SlashCmdList["CRITHIGH"] = function()
-    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Current highest crit: " .. highestCrit .. " (Channel: " .. announcementChannel .. ")")
+    local spellText = ""
+    if highestCritSpell ~= "Unknown" then
+        spellText = " with " .. highestCritSpell
+    end
+    DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Current highest crit: " .. highestCrit .. spellText .. " (Channel: " .. announcementChannel .. ")")
 end
 
 SLASH_CRITRESET1 = "/critreset"
 SlashCmdList["CRITRESET"] = function()
     highestCrit = 0
+    highestCritSpell = "Unknown"
     CriTrackDB.highestCrit = 0
+    CriTrackDB.highestCritSpell = "Unknown"
     DEFAULT_CHAT_FRAME:AddMessage("CriTrack: High score reset to 0")
 end
 
@@ -84,8 +101,13 @@ SlashCmdList["CRITDEBUG"] = function()
     DEFAULT_CHAT_FRAME:AddMessage("=== CriTrack Debug Info ===")
     DEFAULT_CHAT_FRAME:AddMessage("Frame: " .. CriTrack:GetName())
     DEFAULT_CHAT_FRAME:AddMessage("Highest Crit: " .. highestCrit)
+    DEFAULT_CHAT_FRAME:AddMessage("Highest Crit Spell: " .. highestCritSpell)
     DEFAULT_CHAT_FRAME:AddMessage("Channel: " .. announcementChannel)
     DEFAULT_CHAT_FRAME:AddMessage("CriTrackDB exists: " .. tostring(CriTrackDB ~= nil))
+    if CriTrackDB then
+        DEFAULT_CHAT_FRAME:AddMessage("Saved Crit: " .. tostring(CriTrackDB.highestCrit or 0))
+        DEFAULT_CHAT_FRAME:AddMessage("Saved Spell: " .. tostring(CriTrackDB.highestCritSpell or "Unknown"))
+    end
     DEFAULT_CHAT_FRAME:AddMessage("Events: PLAYER_LOGIN, UNIT_COMBAT")
     DEFAULT_CHAT_FRAME:AddMessage("==========================")
 end

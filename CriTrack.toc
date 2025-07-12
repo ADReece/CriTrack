@@ -2,7 +2,7 @@
 ## Title: CriTrack
 ## Notes: Tracks your highest critical hit and announces new records
 ## Author: Reece
-## Version: 1.3
+## Version: 1.4
 ## SavedVariables: CriTrackDB
 
 CriTrack.lua
