@@ -158,4 +158,35 @@ function Utils.GetPlayerName()
     return playerName or "Unknown Player"
 end
 
+-- Check if a player is in your group (party or raid)
+function Utils.IsPlayerInGroup(playerName)
+    if not playerName then return false end
+    
+    -- In WoW 1.12, check party members first
+    if GetNumPartyMembers then
+        local numPartyMembers = GetNumPartyMembers()
+        for i = 1, numPartyMembers do
+            local partyMemberName = UnitName("party" .. i)
+            if partyMemberName == playerName then
+                return true
+            end
+        end
+    end
+    
+    -- Check raid members
+    if GetNumRaidMembers then
+        local numRaidMembers = GetNumRaidMembers()
+        for i = 1, numRaidMembers do
+            local raidMemberName = UnitName("raid" .. i)
+            if raidMemberName == playerName then
+                return true
+            end
+        end
+    end
+    
+    -- If we're not in WoW environment, return true for all players
+    -- This allows testing and avoids filtering in standalone mode
+    return true
+end
+
 -- Utils module is now globally available
