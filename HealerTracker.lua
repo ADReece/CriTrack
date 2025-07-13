@@ -149,61 +149,49 @@ function HealerTracker.ParseGroupCriticalHeal(message)
     -- Pattern 1: "PlayerName's SpellName critically heals Target for X."
     local _, _, caster, spellName, target, healAmount = string.find(message, "([^']+)'s (.+) critically heals ([^%s]+) for (%d+)")
     if caster and spellName and target and healAmount then
-        -- Only track if caster is in our group
-        if Utils and Utils.IsPlayerInGroup(caster) then
-            return {
-                amount = tonumber(healAmount),
-                spell = spellName,
-                target = target,
-                caster = caster,
-                isCritical = true
-            }
-        end
+        return {
+            amount = tonumber(healAmount),
+            spell = spellName,
+            target = target,
+            caster = caster,
+            isCritical = true
+        }
     end
     
     -- Pattern 2: "PlayerName's SpellName critically heals Target for X points."
     local _, _, caster2, spellName2, target2, healAmount2 = string.find(message, "([^']+)'s (.+) critically heals ([^%s]+) for (%d+) points")
     if caster2 and spellName2 and target2 and healAmount2 then
-        -- Only track if caster is in our group
-        if Utils and Utils.IsPlayerInGroup(caster2) then
-            return {
-                amount = tonumber(healAmount2),
-                spell = spellName2,
-                target = target2,
-                caster = caster2,
-                isCritical = true
-            }
-        end
+        return {
+            amount = tonumber(healAmount2),
+            spell = spellName2,
+            target = target2,
+            caster = caster2,
+            isCritical = true
+        }
     end
     
     -- Pattern 3: "PlayerName critically heals Target for X."
     local _, _, caster3, target3, healAmount3 = string.find(message, "([^%s]+) critically heals ([^%s]+) for (%d+)")
     if caster3 and target3 and healAmount3 then
-        -- Only track if caster is in our group
-        if Utils and Utils.IsPlayerInGroup(caster3) then
-            return {
-                amount = tonumber(healAmount3),
-                spell = "Heal",
-                target = target3,
-                caster = caster3,
-                isCritical = true
-            }
-        end
+        return {
+            amount = tonumber(healAmount3),
+            spell = "Heal",
+            target = target3,
+            caster = caster3,
+            isCritical = true
+        }
     end
     
     -- Pattern 4: "PlayerName critically heals Target for X points."
     local _, _, caster4, target4, healAmount4 = string.find(message, "([^%s]+) critically heals ([^%s]+) for (%d+) points")
     if caster4 and target4 and healAmount4 then
-        -- Only track if caster is in our group
-        if Utils and Utils.IsPlayerInGroup(caster4) then
-            return {
-                amount = tonumber(healAmount4),
-                spell = "Heal",
-                target = target4,
-                caster = caster4,
-                isCritical = true
-            }
-        end
+        return {
+            amount = tonumber(healAmount4),
+            spell = "Heal",
+            target = target4,
+            caster = caster4,
+            isCritical = true
+        }
     end
     
     -- Pattern 5: Non-critical group heals (for testing)
@@ -212,16 +200,13 @@ function HealerTracker.ParseGroupCriticalHeal(message)
     if caster5 and spellName5 and target5 and healAmount5 then
         local amount = tonumber(healAmount5)
         if amount > 50 then
-            -- Only track if caster is in our group
-            if Utils and Utils.IsPlayerInGroup(caster5) then
-                return {
-                    amount = amount,
-                    spell = spellName5,
-                    target = target5,
-                    caster = caster5,
-                    isCritical = false
-                }
-            end
+            return {
+                amount = amount,
+                spell = spellName5,
+                target = target5,
+                caster = caster5,
+                isCritical = false
+            }
         end
     end
     
@@ -230,16 +215,13 @@ function HealerTracker.ParseGroupCriticalHeal(message)
     if caster6 and target6 and healAmount6 then
         local amount = tonumber(healAmount6)
         if amount > 50 then
-            -- Only track if caster is in our group
-            if Utils and Utils.IsPlayerInGroup(caster6) then
-                return {
-                    amount = amount,
-                    spell = "Heal",
-                    target = target6,
-                    caster = caster6,
-                    isCritical = false
-                }
-            end
+            return {
+                amount = amount,
+                spell = "Heal",
+                target = target6,
+                caster = caster6,
+                isCritical = false
+            }
         end
     end
     
