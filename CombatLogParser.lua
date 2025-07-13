@@ -192,7 +192,6 @@ function CombatLogParser.ParseOtherPlayerCrit(message)
             end
         end
         end
-    end
     
     return nil
 end
