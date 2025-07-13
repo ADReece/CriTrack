@@ -1209,6 +1209,69 @@ SlashCmdList["CRITTESTHEAL"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("=== Test Complete ===")
 end
 
+-- Debug command to test party heal parsing specifically
+SLASH_CRITTESTPARTYHEAL1 = "/crittestpartyheal"
+SlashCmdList["CRITTESTPARTYHEAL"] = function(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("=== Testing Party Heal Parsing ===")
+    
+    if not HealerTracker then
+        DEFAULT_CHAT_FRAME:AddMessage("ERROR: HealerTracker not loaded")
+        return
+    end
+    
+    -- Show current healer tracker status
+    DEFAULT_CHAT_FRAME:AddMessage("HealerTracker Status:")
+    DEFAULT_CHAT_FRAME:AddMessage("  Enabled: " .. tostring(HealerTracker.IsEnabled()))
+    DEFAULT_CHAT_FRAME:AddMessage("  Group Mode: " .. tostring(HealerTracker.IsGroupModeEnabled()))
+    
+    if not HealerTracker.IsEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("WARNING: HealerTracker not enabled - use /critheal on")
+    end
+    
+    if not HealerTracker.IsGroupModeEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("WARNING: Group mode not enabled - use /critheal group")
+    end
+    
+    -- Test with some sample party heal messages
+    local testMessages = {
+        "PartyMember's Greater Heal critically heals You for 500.",
+        "Fred's Heal critically heals Alice for 300.",
+        "PartyHealer's Flash Heal heals Bob for 250.",
+        "Priest's Renew critically heals Target for 150."
+    }
+    
+    for i, testMsg in ipairs(testMessages) do
+        DEFAULT_CHAT_FRAME:AddMessage(" ")
+        DEFAULT_CHAT_FRAME:AddMessage("Test " .. i .. ": " .. testMsg)
+        
+        -- Test group heal parsing
+        local result = HealerTracker.ParseGroupCriticalHeal(testMsg)
+        if result then
+            DEFAULT_CHAT_FRAME:AddMessage("  ✓ Parsed: " .. result.caster .. " - " .. result.amount .. " (" .. result.spell .. ")")
+            DEFAULT_CHAT_FRAME:AddMessage("  Critical: " .. tostring(result.isCritical))
+            DEFAULT_CHAT_FRAME:AddMessage("  Target: " .. result.target)
+            
+            -- Test if caster is considered in group
+            if Utils and Utils.IsPlayerInGroup then
+                local inGroup = Utils.IsPlayerInGroup(result.caster)
+                DEFAULT_CHAT_FRAME:AddMessage("  In Group: " .. tostring(inGroup))
+            end
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("  ✗ Failed to parse")
+            
+            -- Try to debug why it failed
+            if not HealerTracker.IsGroupModeEnabled() then
+                DEFAULT_CHAT_FRAME:AddMessage("    Reason: Group mode not enabled")
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("    Reason: Message didn't match any pattern or group filtering")
+            end
+        end
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("=== End Test ===")
+end
+
 -- Test command to check for duplicates and clean up leaderboard
 SLASH_CRITCHECKDUPES1 = "/critcheckdupes"
 SlashCmdList["CRITCHECKDUPES"] = function(msg)
