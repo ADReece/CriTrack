@@ -346,35 +346,42 @@ local function OnEvent()
             end
             
             if otherCritData then
-                DebugMessage("Other player crit parsed! Player=" .. tostring(otherCritData.playerName) .. ", Amount=" .. tostring(otherCritData.amount) .. ", Spell=" .. tostring(otherCritData.spell), debugEnabled)
-                
-                -- Additional debug info
-                if debugEnabled then
-                    DebugMessage("Raw message was: " .. tostring(message), debugEnabled)
-                    DebugMessage("Extracted player: '" .. tostring(otherCritData.playerName) .. "'", debugEnabled)
-                    DebugMessage("Extracted spell: '" .. tostring(otherCritData.spell) .. "'", debugEnabled)
-                    DebugMessage("Extracted amount: " .. tostring(otherCritData.amount), debugEnabled)
-                end
-                
-                -- Update competition leaderboard
-                local competitionResult = CompetitionManager.UpdateLeaderboard(otherCritData.playerName, otherCritData.amount, otherCritData.spell)
-                
-                -- Additional debug for competition
-                if debugEnabled then
-                    DebugMessage("Competition update result: updated=" .. tostring(competitionResult.updated) .. ", isNewLeader=" .. tostring(competitionResult.isNewLeader), debugEnabled)
-                    if CompetitionManager.DebugLeaderboard then
-                        local leaderboardState = CompetitionManager.DebugLeaderboard()
-                        DebugMessage("Current leaderboard: " .. leaderboardState, debugEnabled)
-                    end
-                end
-                
-                -- Save competition data
-                if competitionResult.updated then
-                    CriTrackDB.competitionData = CompetitionManager.GetData()
+                -- Double-check that the player is actually in our group
+                if Utils and Utils.IsPlayerInGroup(otherCritData.playerName) then
+                    DebugMessage("Other player crit parsed! Player=" .. tostring(otherCritData.playerName) .. ", Amount=" .. tostring(otherCritData.amount) .. ", Spell=" .. tostring(otherCritData.spell), debugEnabled)
                     
-                    -- Announce if there's a leadership change
-                    if competitionResult.isNewLeader then
-                        SendChatMessage("New group crit leader: " .. otherCritData.amount .. " (" .. otherCritData.spell .. ") by " .. otherCritData.playerName .. "!", announcementChannel)
+                    -- Additional debug info
+                    if debugEnabled then
+                        DebugMessage("Raw message was: " .. tostring(message), debugEnabled)
+                        DebugMessage("Extracted player: '" .. tostring(otherCritData.playerName) .. "'", debugEnabled)
+                        DebugMessage("Extracted spell: '" .. tostring(otherCritData.spell) .. "'", debugEnabled)
+                        DebugMessage("Extracted amount: " .. tostring(otherCritData.amount), debugEnabled)
+                    end
+                    
+                    -- Update competition leaderboard
+                    local competitionResult = CompetitionManager.UpdateLeaderboard(otherCritData.playerName, otherCritData.amount, otherCritData.spell)
+                    
+                    -- Additional debug for competition
+                    if debugEnabled then
+                        DebugMessage("Competition update result: updated=" .. tostring(competitionResult.updated) .. ", isNewLeader=" .. tostring(competitionResult.isNewLeader), debugEnabled)
+                        if CompetitionManager.DebugLeaderboard then
+                            local leaderboardState = CompetitionManager.DebugLeaderboard()
+                            DebugMessage("Current leaderboard: " .. leaderboardState, debugEnabled)
+                        end
+                    end
+                    
+                    -- Save competition data
+                    if competitionResult.updated then
+                        CriTrackDB.competitionData = CompetitionManager.GetData()
+                        
+                        -- Announce if there's a leadership change
+                        if competitionResult.isNewLeader then
+                            SendChatMessage("New group crit leader: " .. otherCritData.amount .. " (" .. otherCritData.spell .. ") by " .. otherCritData.playerName .. "!", announcementChannel)
+                        end
+                    end
+                else
+                    if debugEnabled then
+                        DebugMessage("Player " .. tostring(otherCritData.playerName) .. " is not in our group - ignoring crit", debugEnabled)
                     end
                 end
             else
@@ -1480,6 +1487,48 @@ SlashCmdList["CRITCHECKHEALING"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("4. Use /crittestheal to test message parsing")
     
     DEFAULT_CHAT_FRAME:AddMessage("=== End Debug ===")
+end
+
+-- Test command to check group membership
+SLASH_CRITTESTGROUP1 = "/crittestgroup"
+SlashCmdList["CRITTESTGROUP"] = function(msg)
+    if not msg or msg == "" then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Usage - /crittestgroup <playername>")
+        DEFAULT_CHAT_FRAME:AddMessage("Example: /crittestgroup Gandalf")
+        return
+    end
+    
+    local playerName = msg
+    DEFAULT_CHAT_FRAME:AddMessage("=== Testing Group Membership ===")
+    DEFAULT_CHAT_FRAME:AddMessage("Player: " .. playerName)
+    
+    if Utils and Utils.IsPlayerInGroup then
+        local isInGroup = Utils.IsPlayerInGroup(playerName)
+        DEFAULT_CHAT_FRAME:AddMessage("Is in group: " .. tostring(isInGroup))
+        
+        -- Show party/raid info
+        if GetNumPartyMembers then
+            local numParty = GetNumPartyMembers()
+            DEFAULT_CHAT_FRAME:AddMessage("Party members: " .. tostring(numParty))
+            for i = 1, numParty do
+                local partyMember = UnitName("party" .. i)
+                DEFAULT_CHAT_FRAME:AddMessage("  Party " .. i .. ": " .. tostring(partyMember))
+            end
+        end
+        
+        if GetNumRaidMembers then
+            local numRaid = GetNumRaidMembers()
+            DEFAULT_CHAT_FRAME:AddMessage("Raid members: " .. tostring(numRaid))
+            for i = 1, numRaid do
+                local raidMember = UnitName("raid" .. i)
+                DEFAULT_CHAT_FRAME:AddMessage("  Raid " .. i .. ": " .. tostring(raidMember))
+            end
+        end
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("ERROR: Utils.IsPlayerInGroup not available")
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("==============================")
 end
 
 DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Addon loaded for 1.12 Vanilla!")

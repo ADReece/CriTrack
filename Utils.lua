@@ -165,10 +165,12 @@ function Utils.IsPlayerInGroup(playerName)
     -- In WoW 1.12, check party members first
     if GetNumPartyMembers then
         local numPartyMembers = GetNumPartyMembers()
-        for i = 1, numPartyMembers do
-            local partyMemberName = UnitName("party" .. i)
-            if partyMemberName == playerName then
-                return true
+        if numPartyMembers and numPartyMembers > 0 then
+            for i = 1, numPartyMembers do
+                local partyMemberName = UnitName("party" .. i)
+                if partyMemberName == playerName then
+                    return true
+                end
             end
         end
     end
@@ -176,17 +178,19 @@ function Utils.IsPlayerInGroup(playerName)
     -- Check raid members
     if GetNumRaidMembers then
         local numRaidMembers = GetNumRaidMembers()
-        for i = 1, numRaidMembers do
-            local raidMemberName = UnitName("raid" .. i)
-            if raidMemberName == playerName then
-                return true
+        if numRaidMembers and numRaidMembers > 0 then
+            for i = 1, numRaidMembers do
+                local raidMemberName = UnitName("raid" .. i)
+                if raidMemberName == playerName then
+                    return true
+                end
             end
         end
     end
     
-    -- If we're not in WoW environment, return true for all players
-    -- This allows testing and avoids filtering in standalone mode
-    return true
+    -- If we're not in WoW environment, return false to allow testing
+    -- In WoW, this will return false for non-group members
+    return false
 end
 
 -- Utils module is now globally available
