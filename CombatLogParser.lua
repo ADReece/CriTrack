@@ -128,42 +128,51 @@ function CombatLogParser.ParseOtherPlayerCrit(message)
         -- Pattern 1: "PlayerName's SpellName crits Target for X damage"
         local _, _, playerName, spellName, critAmount = string.find(message, "([^']+)'s ([^%s]+[^%s]*) crits .* for (%d+)")
         if playerName and spellName and critAmount then
-            return {
-                playerName = playerName,
-                amount = tonumber(critAmount),
-                spell = spellName,
-                isCritical = true
-            }
+            -- Only track if player is in our group
+            if Utils and Utils.IsPlayerInGroup(playerName) then
+                return {
+                    playerName = playerName,
+                    amount = tonumber(critAmount),
+                    spell = spellName,
+                    isCritical = true
+                }
+            end
         end
         
         -- Pattern 2: "PlayerName's Multi Word Spell crits Target for X damage"
         local _, _, playerName2, multiSpell, critAmount2 = string.find(message, "([^']+)'s (.+) crits .* for (%d+)")
         if playerName2 and multiSpell and critAmount2 then
-            -- Clean up the spell name (remove any trailing text)
-            local cleanSpell = multiSpell
-            local spacePos = string.find(cleanSpell, " crits")
-            if spacePos then
-                cleanSpell = string.sub(cleanSpell, 1, spacePos - 1)
+            -- Only track if player is in our group
+            if Utils and Utils.IsPlayerInGroup(playerName2) then
+                -- Clean up the spell name (remove any trailing text)
+                local cleanSpell = multiSpell
+                local spacePos = string.find(cleanSpell, " crits")
+                if spacePos then
+                    cleanSpell = string.sub(cleanSpell, 1, spacePos - 1)
+                end
+                
+                return {
+                    playerName = playerName2,
+                    amount = tonumber(critAmount2),
+                    spell = cleanSpell,
+                    isCritical = true
+                }
             end
-            
-            return {
-                playerName = playerName2,
-                amount = tonumber(critAmount2),
-                spell = cleanSpell,
-                isCritical = true
-            }
         end
         
         -- Pattern 3: "PlayerName crits Target for X damage" (auto-attack, only if no possessive)
         if not string.find(message, "'s") then
             local _, _, altPlayerName, altAmount = string.find(message, "([^%s]+) crits .* for (%d+)")
             if altPlayerName and altAmount then
-                return {
-                    playerName = altPlayerName,
-                    amount = tonumber(altAmount),
-                    spell = "Auto Attack",
-                    isCritical = true
-                }
+                -- Only track if player is in our group
+                if Utils and Utils.IsPlayerInGroup(altPlayerName) then
+                    return {
+                        playerName = altPlayerName,
+                        amount = tonumber(altAmount),
+                        spell = "Auto Attack",
+                        isCritical = true
+                    }
+                end
             end
         end
         
@@ -171,13 +180,17 @@ function CombatLogParser.ParseOtherPlayerCrit(message)
         if not string.find(message, "'s") then
             local _, _, critPlayerName, critAmount3 = string.find(message, "([^%s]+) critically hits .* for (%d+)")
             if critPlayerName and critAmount3 then
-                return {
-                    playerName = critPlayerName,
-                    amount = tonumber(critAmount3),
-                    spell = "Attack",
-                    isCritical = true
-                }
+                -- Only track if player is in our group
+                if Utils and Utils.IsPlayerInGroup(critPlayerName) then
+                    return {
+                        playerName = critPlayerName,
+                        amount = tonumber(critAmount3),
+                        spell = "Attack",
+                        isCritical = true
+                    }
+                end
             end
+        end
         end
     end
     

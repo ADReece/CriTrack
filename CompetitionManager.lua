@@ -8,6 +8,42 @@ CompetitionManager = {}
 function CompetitionManager.Initialize(savedData)
     CompetitionManager.competitionData = savedData or {}
     CompetitionManager.competitionMode = false
+    
+    -- Clean up any duplicate entries that might exist from old data
+    if CompetitionManager.competitionData and table.getn(CompetitionManager.competitionData) > 0 then
+        CompetitionManager.CleanupDuplicates()
+    end
+end
+
+-- Clean up duplicate entries (internal function)
+function CompetitionManager.CleanupDuplicates()
+    if not CompetitionManager.competitionData or table.getn(CompetitionManager.competitionData) == 0 then
+        return
+    end
+    
+    local cleanData = {}
+    local playerHighest = {}
+    
+    -- Find the highest crit for each player
+    for i = 1, table.getn(CompetitionManager.competitionData) do
+        local entry = CompetitionManager.competitionData[i]
+        local playerName = entry.playerName
+        
+        if not playerHighest[playerName] or entry.critAmount > playerHighest[playerName].critAmount then
+            playerHighest[playerName] = {
+                playerName = playerName,
+                critAmount = entry.critAmount,
+                spellName = entry.spellName
+            }
+        end
+    end
+    
+    -- Convert back to array
+    for playerName, entry in pairs(playerHighest) do
+        table.insert(cleanData, entry)
+    end
+    
+    CompetitionManager.competitionData = cleanData
 end
 
 -- Enable or disable competition mode
@@ -26,15 +62,23 @@ function CompetitionManager.UpdateLeaderboard(playerName, critAmount, spellName)
         return {updated = false} 
     end
     
+    -- Initialize competition data if it doesn't exist
+    if not CompetitionManager.competitionData then
+        CompetitionManager.competitionData = {}
+    end
+    
     -- Get the previous leader before updating
     local previousLeader = CompetitionManager.GetLeader()
     local previousLeaderName = previousLeader and previousLeader.playerName or nil
     
     -- Find existing entry for this player
     local playerEntry = nil
-    for i, entry in ipairs(CompetitionManager.competitionData) do
+    local playerIndex = nil
+    for i = 1, table.getn(CompetitionManager.competitionData) do
+        local entry = CompetitionManager.competitionData[i]
         if entry.playerName == playerName then
             playerEntry = entry
+            playerIndex = i
             break
         end
     end
@@ -42,12 +86,14 @@ function CompetitionManager.UpdateLeaderboard(playerName, critAmount, spellName)
     -- Update or create entry
     local wasUpdated = false
     if playerEntry then
+        -- Player already exists, update if this crit is higher
         if critAmount > playerEntry.critAmount then
             playerEntry.critAmount = critAmount
             playerEntry.spellName = spellName
             wasUpdated = true
         end
     else
+        -- New player, add to leaderboard
         table.insert(CompetitionManager.competitionData, {
             playerName = playerName,
             critAmount = critAmount,
@@ -101,7 +147,8 @@ function CompetitionManager.GetSortedLeaderboard()
     
     -- Create a copy of the data for sorting
     local sortedData = {}
-    for i, entry in ipairs(CompetitionManager.competitionData) do
+    for i = 1, table.getn(CompetitionManager.competitionData) do
+        local entry = CompetitionManager.competitionData[i]
         table.insert(sortedData, entry)
     end
     
@@ -137,6 +184,21 @@ end
 -- Get the raw competition data (for saving)
 function CompetitionManager.GetData()
     return CompetitionManager.competitionData
+end
+
+-- Debug function to show current leaderboard
+function CompetitionManager.DebugLeaderboard()
+    if not CompetitionManager.competitionData then
+        return "No competition data"
+    end
+    
+    local result = "Competition Leaderboard (" .. table.getn(CompetitionManager.competitionData) .. " entries):\n"
+    for i = 1, table.getn(CompetitionManager.competitionData) do
+        local entry = CompetitionManager.competitionData[i]
+        result = result .. i .. ". " .. entry.playerName .. ": " .. entry.critAmount .. " (" .. entry.spellName .. ")\n"
+    end
+    
+    return result
 end
 
 -- CompetitionManager module is now globally available

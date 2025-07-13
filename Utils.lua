@@ -55,10 +55,7 @@ function Utils.ParseCommand(msg, pattern)
     -- Simple pattern matching for "/command arg1 arg2 arg3"
     if pattern == "player_amount_spell" then
         -- Parse: PlayerName Amount SpellName
-        local words = {}
-        for word in string.gfind(msg, "%S+") do
-            table.insert(words, word)
-        end
+        local words = Utils.ParseWords(msg)
         
         if table.getn(words) >= 2 then
             local playerName = words[1]
@@ -87,6 +84,27 @@ function Utils.ParseCommand(msg, pattern)
     end
     
     return nil
+end
+
+-- Parse command arguments using string splitting (Lua 5.0 compatible)
+function Utils.ParseWords(msg)
+    if not msg or msg == "" then
+        return {}
+    end
+    
+    local words = {}
+    local start = 1
+    while start <= string.len(msg) do
+        local wordStart, wordEnd = string.find(msg, "%S+", start)
+        if wordStart then
+            table.insert(words, string.sub(msg, wordStart, wordEnd))
+            start = wordEnd + 1
+        else
+            break
+        end
+    end
+    
+    return words
 end
 
 -- Create a formatted message with colors

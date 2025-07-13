@@ -176,6 +176,11 @@ local function OnEvent()
             if CompetitionManager then
                 competitionResult = CompetitionManager.UpdateLeaderboard(playerName, critAmount, spellName)
                 
+                -- Additional debug for competition
+                if debugEnabled then
+                    DebugMessage("Self crit competition update: updated=" .. tostring(competitionResult.updated) .. ", isNewLeader=" .. tostring(competitionResult.isNewLeader), debugEnabled)
+                end
+                
                 -- Save competition data
                 if competitionResult.updated then
                     CriTrackDB.competitionData = CompetitionManager.GetData()
@@ -209,10 +214,11 @@ local function OnEvent()
         
         -- Check for critical heals
         if HealerTracker and HealerTracker.IsEnabled() then
+            DebugMessage("HealerTracker is enabled, attempting to parse heal message", debugEnabled)
             local healData = HealerTracker.ParseCriticalHeal(message)
             if healData then
                 local critText = healData.isCritical and " (CRITICAL)" or " (regular)"
-                DebugMessage("Heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Target=" .. tostring(healData.target) .. critText, debugEnabled)
+                DebugMessage("✓ Heal parsed! Amount=" .. tostring(healData.amount) .. ", Spell=" .. tostring(healData.spell) .. ", Target=" .. tostring(healData.target) .. critText, debugEnabled)
                 
                 -- Update personal heal record
                 local personalHealRecord = HealerTracker.UpdatePersonalRecord(healData)
@@ -228,7 +234,7 @@ local function OnEvent()
                     CriTrackDB.healerData = HealerTracker.GetData()
                     
                     if debugEnabled then
-                        DebugMessage("Healer data saved. Personal record: " .. tostring(personalHealRecord), debugEnabled)
+                        DebugMessage("✓ Healer data saved. Personal record updated: " .. tostring(personalHealRecord), debugEnabled)
                     end
                 end
                 
@@ -243,12 +249,13 @@ local function OnEvent()
                 end
             else
                 if debugEnabled then
-                    DebugMessage("No heal data parsed from message: " .. tostring(message), debugEnabled)
+                    DebugMessage("✗ No heal data parsed from message: " .. tostring(message), debugEnabled)
                 end
             end
         else
             if debugEnabled then
-                DebugMessage("HealerTracker not enabled or not loaded", debugEnabled)
+                local enabled = HealerTracker and HealerTracker.IsEnabled()
+                DebugMessage("✗ HealerTracker not enabled or not loaded (enabled=" .. tostring(enabled) .. ")", debugEnabled)
             end
         end
         
@@ -351,6 +358,15 @@ local function OnEvent()
                 
                 -- Update competition leaderboard
                 local competitionResult = CompetitionManager.UpdateLeaderboard(otherCritData.playerName, otherCritData.amount, otherCritData.spell)
+                
+                -- Additional debug for competition
+                if debugEnabled then
+                    DebugMessage("Competition update result: updated=" .. tostring(competitionResult.updated) .. ", isNewLeader=" .. tostring(competitionResult.isNewLeader), debugEnabled)
+                    if CompetitionManager.DebugLeaderboard then
+                        local leaderboardState = CompetitionManager.DebugLeaderboard()
+                        DebugMessage("Current leaderboard: " .. leaderboardState, debugEnabled)
+                    end
+                end
                 
                 -- Save competition data
                 if competitionResult.updated then
@@ -543,11 +559,18 @@ SlashCmdList["CRITHEALTEST"] = function(msg)
     end
     
     local testAmount = tonumber(msg) or 100
+    local playerName = "You"
+    if Utils and Utils.GetPlayerName then
+        playerName = Utils.GetPlayerName()
+    else
+        playerName = UnitName("player") or "You"
+    end
+    
     local testHealData = {
         amount = testAmount,
         spell = "Test Heal",
         target = "Test Target",
-        caster = UnitName("player") or "You",
+        caster = playerName,
         isCritical = true
     }
     
@@ -587,14 +610,19 @@ SlashCmdList["CRITTESTOTHER"] = function(msg)
     
     -- Parse test message format: PlayerName Amount [SpellName]
     local words = {}
-    local start = 1
-    while start <= string.len(msg) do
-        local wordStart, wordEnd = string.find(msg, "%S+", start)
-        if wordStart then
-            table.insert(words, string.sub(msg, wordStart, wordEnd))
-            start = wordEnd + 1
-        else
-            break
+    if Utils and Utils.ParseWords then
+        words = Utils.ParseWords(msg)
+    else
+        -- Fallback parsing for Lua 5.0 compatibility
+        local start = 1
+        while start <= string.len(msg) do
+            local wordStart, wordEnd = string.find(msg, "%S+", start)
+            if wordStart then
+                table.insert(words, string.sub(msg, wordStart, wordEnd))
+                start = wordEnd + 1
+            else
+                break
+            end
         end
     end
     
@@ -691,6 +719,8 @@ SlashCmdList["CRITHELP"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Leaderboard:|r")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critboard|r - Show leaderboard in chat")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critboard announce|r - Share leaderboard publicly")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critcheckdupes|r - Check for duplicate players")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critcleandupes|r - Remove duplicate player entries")
     DEFAULT_CHAT_FRAME:AddMessage(" ")
     DEFAULT_CHAT_FRAME:AddMessage("|cffff9900Healer Tracking:|r")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critheal|r - Show healer tracking status")
@@ -710,6 +740,8 @@ SlashCmdList["CRITHELP"] = function(msg)
     DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestparse Fred's Arcane Explosion crits Kobold for 245 damage|r")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestall|r - Run comprehensive parsing tests")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestheal|r - Run healing message parsing tests")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/critcheckhealing|r - Debug healing system thoroughly")
+    DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestdupes|r - Test duplicate player prevention")
     DEFAULT_CHAT_FRAME:AddMessage("  |cffffffff/crittestparse <message>|r - Test parsing of combat messages")
     DEFAULT_CHAT_FRAME:AddMessage("    |cffccccccExample: /crittestparse 'Gandalf's Fireball crits Orc for 456 damage'|r")
     DEFAULT_CHAT_FRAME:AddMessage(" ")
@@ -737,14 +769,18 @@ SlashCmdList["CRITADD"] = function(msg)
     else
         -- Fallback parsing for Lua 5.0 compatibility
         local words = {}
-        local start = 1
-        while start <= string.len(msg) do
-            local wordStart, wordEnd = string.find(msg, "%S+", start)
-            if wordStart then
-                table.insert(words, string.sub(msg, wordStart, wordEnd))
-                start = wordEnd + 1
-            else
-                break
+        if Utils and Utils.ParseWords then
+            words = Utils.ParseWords(msg)
+        else
+            local start = 1
+            while start <= string.len(msg) do
+                local wordStart, wordEnd = string.find(msg, "%S+", start)
+                if wordStart then
+                    table.insert(words, string.sub(msg, wordStart, wordEnd))
+                    start = wordEnd + 1
+                else
+                    break
+                end
             end
         end
         if table.getn(words) >= 2 then
@@ -1164,6 +1200,286 @@ SlashCmdList["CRITTESTHEAL"] = function(msg)
     end
     
     DEFAULT_CHAT_FRAME:AddMessage("=== Test Complete ===")
+end
+
+-- Test command to check for duplicates and clean up leaderboard
+SLASH_CRITCHECKDUPES1 = "/critcheckdupes"
+SlashCmdList["CRITCHECKDUPES"] = function(msg)
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition module not loaded!")
+        return
+    end
+    
+    if not CompetitionManager.IsEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition mode not enabled")
+        return
+    end
+    
+    local competitionData = CompetitionManager.GetData()
+    if not competitionData or table.getn(competitionData) == 0 then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: No competition data to check")
+        return
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=== Checking for Duplicate Players ===")
+    DEFAULT_CHAT_FRAME:AddMessage("Current entries: " .. table.getn(competitionData))
+    
+    -- Show current leaderboard
+    for i = 1, table.getn(competitionData) do
+        local entry = competitionData[i]
+        DEFAULT_CHAT_FRAME:AddMessage(i .. ". " .. entry.playerName .. ": " .. entry.critAmount .. " (" .. entry.spellName .. ")")
+    end
+    
+    -- Find duplicates
+    local duplicates = {}
+    local playerCounts = {}
+    
+    for i = 1, table.getn(competitionData) do
+        local entry = competitionData[i]
+        local playerName = entry.playerName
+        
+        if playerCounts[playerName] then
+            playerCounts[playerName] = playerCounts[playerName] + 1
+            if not duplicates[playerName] then
+                duplicates[playerName] = {}
+            end
+            table.insert(duplicates[playerName], {index = i, amount = entry.critAmount, spell = entry.spellName})
+        else
+            playerCounts[playerName] = 1
+        end
+    end
+    
+    -- Report duplicates
+    local foundDuplicates = false
+    for playerName, count in pairs(playerCounts) do
+        if count > 1 then
+            foundDuplicates = true
+            DEFAULT_CHAT_FRAME:AddMessage("DUPLICATE: " .. playerName .. " appears " .. count .. " times")
+            if duplicates[playerName] then
+                for i = 1, table.getn(duplicates[playerName]) do
+                    local dup = duplicates[playerName][i]
+                    DEFAULT_CHAT_FRAME:AddMessage("  Entry " .. dup.index .. ": " .. dup.amount .. " (" .. dup.spell .. ")")
+                end
+            end
+        end
+    end
+    
+    if not foundDuplicates then
+        DEFAULT_CHAT_FRAME:AddMessage("✓ No duplicates found - leaderboard is clean!")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("✗ Duplicates found! Use '/critcleandupes' to fix")
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("====================================")
+end
+
+-- Command to clean up duplicate entries
+SLASH_CRITCLEANDUPES1 = "/critcleandupes"
+SlashCmdList["CRITCLEANDUPES"] = function(msg)
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition module not loaded!")
+        return
+    end
+    
+    if not CompetitionManager.IsEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition mode not enabled")
+        return
+    end
+    
+    local competitionData = CompetitionManager.GetData()
+    if not competitionData or table.getn(competitionData) == 0 then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: No competition data to clean")
+        return
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=== Cleaning Duplicate Players ===")
+    
+    -- Create a new clean leaderboard
+    local cleanData = {}
+    local playerHighest = {}
+    
+    -- Find the highest crit for each player
+    for i = 1, table.getn(competitionData) do
+        local entry = competitionData[i]
+        local playerName = entry.playerName
+        
+        if not playerHighest[playerName] or entry.critAmount > playerHighest[playerName].critAmount then
+            playerHighest[playerName] = {
+                playerName = playerName,
+                critAmount = entry.critAmount,
+                spellName = entry.spellName
+            }
+        end
+    end
+    
+    -- Convert back to array
+    for playerName, entry in pairs(playerHighest) do
+        table.insert(cleanData, entry)
+    end
+    
+    local originalCount = table.getn(competitionData)
+    local cleanCount = table.getn(cleanData)
+    
+    -- Update the competition data
+    CompetitionManager.competitionData = cleanData
+    CriTrackDB.competitionData = cleanData
+    
+    DEFAULT_CHAT_FRAME:AddMessage("Cleaned leaderboard:")
+    DEFAULT_CHAT_FRAME:AddMessage("  Original entries: " .. originalCount)
+    DEFAULT_CHAT_FRAME:AddMessage("  Clean entries: " .. cleanCount)
+    DEFAULT_CHAT_FRAME:AddMessage("  Removed: " .. (originalCount - cleanCount) .. " duplicates")
+    
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Updated leaderboard:")
+    for i = 1, table.getn(cleanData) do
+        local entry = cleanData[i]
+        DEFAULT_CHAT_FRAME:AddMessage(i .. ". " .. entry.playerName .. ": " .. entry.critAmount .. " (" .. entry.spellName .. ")")
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=================================")
+end
+
+-- Test command to simulate duplicate entries and verify prevention
+SLASH_CRITTESTDUPES1 = "/crittestdupes"
+SlashCmdList["CRITTESTDUPES"] = function(msg)
+    if not CompetitionManager then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Competition module not loaded!")
+        return
+    end
+    
+    if not CompetitionManager.IsEnabled() then
+        DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Enable competition mode first with /critcomp on")
+        return
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=== Testing Duplicate Prevention ===")
+    
+    -- Clear current data for clean test
+    CompetitionManager.Reset()
+    DEFAULT_CHAT_FRAME:AddMessage("Cleared leaderboard for test")
+    
+    -- Test adding same player multiple times with different spells/amounts
+    local testData = {
+        {player = "Fred", amount = 100, spell = "Auto Attack"},
+        {player = "Fred", amount = 200, spell = "Fireball"},      -- Should replace auto attack
+        {player = "Fred", amount = 150, spell = "Frostbolt"},     -- Should not replace fireball (lower)
+        {player = "Alice", amount = 300, spell = "Lightning Bolt"},
+        {player = "Alice", amount = 250, spell = "Auto Attack"},   -- Should not replace lightning bolt
+        {player = "Bob", amount = 180, spell = "Arcane Explosion"},
+        {player = "Fred", amount = 350, spell = "Pyroblast"}      -- Should replace fireball (higher)
+    }
+    
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Adding test entries:")
+    
+    for i = 1, table.getn(testData) do
+        local test = testData[i]
+        DEFAULT_CHAT_FRAME:AddMessage("Adding: " .. test.player .. " - " .. test.amount .. " (" .. test.spell .. ")")
+        
+        local result = CompetitionManager.UpdateLeaderboard(test.player, test.amount, test.spell)
+        if result.updated then
+            DEFAULT_CHAT_FRAME:AddMessage("  ✓ Updated (New leader: " .. tostring(result.isNewLeader) .. ")")
+        else
+            DEFAULT_CHAT_FRAME:AddMessage("  ✗ Not updated (amount too low)")
+        end
+    end
+    
+    -- Show final leaderboard
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Final leaderboard:")
+    
+    local sortedData = CompetitionManager.GetSortedLeaderboard()
+    for i = 1, table.getn(sortedData) do
+        local entry = sortedData[i]
+        DEFAULT_CHAT_FRAME:AddMessage(i .. ". " .. entry.playerName .. ": " .. entry.critAmount .. " (" .. entry.spellName .. ")")
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Expected result:")
+    DEFAULT_CHAT_FRAME:AddMessage("1. Fred: 350 (Pyroblast)")
+    DEFAULT_CHAT_FRAME:AddMessage("2. Alice: 300 (Lightning Bolt)")
+    DEFAULT_CHAT_FRAME:AddMessage("3. Bob: 180 (Arcane Explosion)")
+    DEFAULT_CHAT_FRAME:AddMessage("=================================")
+end
+
+-- Test command to debug healing system thoroughly
+SLASH_CRITCHECKHEALING1 = "/critcheckhealing"
+SlashCmdList["CRITCHECKHEALING"] = function(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("=== CriTrack Healing System Debug ===")
+    
+    -- Check if HealerTracker is loaded
+    if not HealerTracker then
+        DEFAULT_CHAT_FRAME:AddMessage("✗ HealerTracker module not loaded!")
+        return
+    end
+    DEFAULT_CHAT_FRAME:AddMessage("✓ HealerTracker module loaded")
+    
+    -- Check if healing is enabled
+    local enabled = HealerTracker.IsEnabled()
+    DEFAULT_CHAT_FRAME:AddMessage("Healing tracking enabled: " .. tostring(enabled))
+    if not enabled then
+        DEFAULT_CHAT_FRAME:AddMessage("→ Use '/critheal on' to enable healing tracking")
+    end
+    
+    -- Check group mode
+    local groupMode = HealerTracker.IsGroupModeEnabled()
+    DEFAULT_CHAT_FRAME:AddMessage("Group healing tracking enabled: " .. tostring(groupMode))
+    if not groupMode then
+        DEFAULT_CHAT_FRAME:AddMessage("→ Use '/critheal group' to enable group healing tracking")
+    end
+    
+    -- Show current records
+    local stats = HealerTracker.GetStats()
+    DEFAULT_CHAT_FRAME:AddMessage("Personal heal record: " .. HealerTracker.FormatPersonalRecord())
+    DEFAULT_CHAT_FRAME:AddMessage("Group heal record: " .. HealerTracker.FormatGroupRecord())
+    
+    -- Test parsing with sample messages
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Testing healing message parsing:")
+    
+    local testMessages = {
+        "Your Heal critically heals TestTarget for 500.",
+        "Your Greater Heal heals TestTarget for 300.",
+        "Player's Heal critically heals TestTarget for 600."
+    }
+    
+    for i = 1, table.getn(testMessages) do
+        local msg = testMessages[i]
+        DEFAULT_CHAT_FRAME:AddMessage("Test " .. i .. ": " .. msg)
+        
+        -- Test self healing
+        local selfResult = HealerTracker.ParseCriticalHeal(msg)
+        if selfResult then
+            local critText = selfResult.isCritical and " (CRITICAL)" or " (regular)"
+            DEFAULT_CHAT_FRAME:AddMessage("  ✓ Self: " .. selfResult.amount .. " (" .. selfResult.spell .. ")" .. critText)
+        else
+            -- Test group healing
+            local groupResult = HealerTracker.ParseGroupCriticalHeal(msg)
+            if groupResult then
+                local critText = groupResult.isCritical and " (CRITICAL)" or " (regular)"
+                DEFAULT_CHAT_FRAME:AddMessage("  ✓ Group: " .. groupResult.caster .. " - " .. groupResult.amount .. " (" .. groupResult.spell .. ")" .. critText)
+            else
+                DEFAULT_CHAT_FRAME:AddMessage("  ✗ Failed to parse")
+            end
+        end
+    end
+    
+    -- Show registered events
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("Healing events registered:")
+    DEFAULT_CHAT_FRAME:AddMessage("  - CHAT_MSG_SPELL_SELF_BUFF (your heals)")
+    DEFAULT_CHAT_FRAME:AddMessage("  - CHAT_MSG_SPELL_PARTY_BUFF (party heals)")
+    DEFAULT_CHAT_FRAME:AddMessage("  - CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF (friendly heals)")
+    DEFAULT_CHAT_FRAME:AddMessage("  - CHAT_MSG_COMBAT_FRIENDLY_BUFF (misc healing)")
+    
+    DEFAULT_CHAT_FRAME:AddMessage(" ")
+    DEFAULT_CHAT_FRAME:AddMessage("If heals still don't work:")
+    DEFAULT_CHAT_FRAME:AddMessage("1. Enable debug mode: /critdebug on")
+    DEFAULT_CHAT_FRAME:AddMessage("2. Enable healer tracking: /critheal on")
+    DEFAULT_CHAT_FRAME:AddMessage("3. Cast a heal and check debug output")
+    DEFAULT_CHAT_FRAME:AddMessage("4. Use /crittestheal to test message parsing")
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=== End Debug ===")
 end
 
 DEFAULT_CHAT_FRAME:AddMessage("CriTrack: Addon loaded for 1.12 Vanilla!")
